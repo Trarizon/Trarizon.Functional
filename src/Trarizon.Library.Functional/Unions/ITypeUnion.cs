@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Trarizon.Library.Functional.Unions;
 
-public interface ITypeUnion<T1,T2>
+internal interface ITypeUnion
 {
     bool IsNull { get; }
     T? As<T>();

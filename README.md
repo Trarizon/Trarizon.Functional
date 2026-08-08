@@ -1,5 +1,17 @@
 ﻿# Trarizon.Library.Functional
 
+Provide basic monads, union generation
+
+- `Optional<T>`, `Result<T, TError>`, value type and supports `ref struct`
+- TypeUnion, implemented by source generator, supports `ref struct`, pointers
+
+## Monads
+
+`Optional<T>` and `Result<T, TError>` are available.
+
+
+
+
 Provides monads-related utilities.
 
 Note that the library is not designed for pure functional programming.
