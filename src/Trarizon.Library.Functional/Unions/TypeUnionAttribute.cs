@@ -12,9 +12,13 @@ public class TypeUnionAttribute(params Type[] types) : Attribute
     /// Generate dangerous members, which provides unchecked access to union fields.<br/>
     /// </summary>
     public bool GenerateDangerousMembers { get; set; }
+    /// <summary>
+    /// Generate separate <c>As</c> and <c>Is</c> methods for <c>ref struct</c> types even if the runtime supports <c>allows ref struct</c>.
+    /// </summary>
+    public bool AlwaysGenerateSeperateMethodsForRefStruct { get; set; }
 }
 
-public sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))
+internal sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))
 #if NET9_0_OR_GREATER
     where T1 : allows ref struct
     where T2 : allows ref struct

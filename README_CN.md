@@ -30,7 +30,7 @@ Optional<int> optNumber = Optional.None;
 var func = (bool condition) => condition ? Optional.Of(1) : Optional.None;
 ```
 
-如果隐式转换失效或需要具体类型的None，可使用`Optional<T>.None`或`Build`方法
+如果隐式转换失效或需要具体类型的`None`，可使用`Optional<T>.None`或`Build`方法
 ``` csharp
 var none = Optional<int>.None; // 返回Optional<int>
 var none = Optional.None.Build<int>(); // 返回Optional<int>
@@ -38,13 +38,13 @@ var none = Optional.None.Build<int>(); // 返回Optional<int>
 
 `Result`的API原理与`Optional`类似。
 
-此外还提供了其他方法用于创建值，均位于`Optional<T>`类中。
+此外还提供了其他方法用于创建值，均位于`Optional`类中。
 
 #### 方法
 
 转换方法基于C#习惯命名，如无必要不使用函数式命名。
 
-方法普遍有多个重载，以及根据不同命名后缀提供差异操作。
+方法普遍有多个重载，以及根据不同命名后缀提供差异操作，比如`Select` vs `SelectError`。
 
 方法|描述|
 |---|---|
@@ -59,7 +59,7 @@ var none = Optional.None.Build<int>(); // 返回Optional<int>
 |`OfType`|同Linq的OfType，筛选出指定类型的monad|
 |`GetValueOrThrow`<br/>`GetValueOrDefault`<br/>`TryGetVaue`<br/>`GetValueRefOrDefaultRef`|获取值
 
-- `Select`，`Bind`会
+- `Select`，`Bind`支持`ref struct`，会自动根据函数返回值切换`ref struct`版与非`ref struct`版。
 - 提供了`SelectMany`方法同`Bind`，但已隐藏，仅用于linq表达式语法使用。
 
 #### 转换
@@ -83,7 +83,7 @@ var none = Optional.None.Build<int>(); // 返回Optional<int>
 
 - 支持`ref struct`，含有`ref struct`时union类型会标记为`ref struct`。
 - 支持指针类型
-- 支持void但没什么用
+- 支持`void`但没什么用
 
 ``` csharp
 [TypeUnion(
@@ -513,6 +513,7 @@ ref partial struct MyUnion
 
 - `GenerateDangerousMembers`：默认值为`false`。生成一系列DangerousGetValueRef私有方法，提供根据类型对字段的直接访问。
   - 不设为true也可以访问，因为字段本身就是private可读的。方法只是提供一个更便捷的接口。
+- `AlwaysGenerateSeperateMethodsForRefStruct`：即使运行时支持`allows ref struct`，也会为`ref struct` 生成单独的`As`与`Is`方法。
 
 #### 方法
 
@@ -530,6 +531,7 @@ ref partial struct MyUnion
 
 - 对于低版本(.NET 9.0以下)不支持`allows ref struct`方法时，会生成单独的`As`与`Is`方法用于检测该类型。
   - 例：`As_ReadOnlySpan_char()`、`Is_ReadOnlySpan_char()`
+  - 该功能可由属性控制始终开启
 - 存在void类型时，会生成`IsVoid()`方法
 - 存在指针类型时，会生成`AsPointer<T>()`，`AsVoidPointer()`, `IsPointer<T>()`、`IsVoidPointer()`方法
   - 对于ref struct指针，同样会生成单独的`AsPointer_ReadOnlySpan_char()`方法

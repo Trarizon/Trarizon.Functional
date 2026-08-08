@@ -157,7 +157,8 @@ partial class TypeUnionGenerator
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             variantDatas.ToSequenceEquatableImmutableArray(),
             new TypeUnionDataOptions(
-                GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>()
+                GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>(),
+                AlwaysGenerateSeperateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeperateMethodsForRefStruct").CastValueOrDefault<bool>()
             )
         );
     }

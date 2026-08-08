@@ -26,5 +26,6 @@ namespace N
     typeof(JsonElement),
     typeof(ReadOnlySpan<char>),
     typeof(float),
-    typeof(void*), typeof(int*))]
+    typeof(void*), typeof(int*),
+    AlwaysGenerateSeperateMethodsForRefStruct = true)]
 partial struct MyUnion;
