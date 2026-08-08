@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/Props/">
+    <File Path="Aot.props" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="Nuget.props" />
+    <File Path="SourceGenerator.props" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="TODO.md" />
+  </Folder>
+  <Project Path="src/Trarizon.Library.Functional.Generators/Trarizon.Library.Functional.Generators.csproj" />
+  <Project Path="src/Trarizon.Library.Functional/Trarizon.Library.Functional.csproj" />
+  <Project Path="tests/Trarizon.Run.Nuget/Trarizon.Run.Nuget.csproj" Id="6c2157de-288e-4c6e-a1f2-29d5adf365e5" />
+  <Project Path="tests/Trarizon.Run/Trarizon.Run.csproj" Id="245aaa5d-000e-4ddb-b2ed-4e462ebbedfb" />
+</Solution>
