@@ -152,7 +152,13 @@ partial class TypeUnionGenerator
         return new TypeUnionData(
             CodeHelpers.ToFileNameString(symbol.ToDisplayString()),
             TypeHierarchyInfo.Create(symbol, syntax),
-            variantDatas.ToSequenceEquatableImmutableArray()
+            symbol.Name,
+            symbol.ToDisplayString(),
+            symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+            variantDatas.ToSequenceEquatableImmutableArray(),
+            new TypeUnionDataOptions(
+                GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>()
+            )
         );
     }
 

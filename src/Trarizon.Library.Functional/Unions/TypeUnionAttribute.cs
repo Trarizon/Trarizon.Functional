@@ -6,7 +6,12 @@ public enum UnionShareInterfaceOption { Disabled, Enabled, Explicit, }
 public class TypeUnionAttribute(params Type[] types) : Attribute
 {
     public Type[] Types { get; } = types;
-    public UnionShareInterfaceOption ShareInterface { get; set; }
+    // public UnionShareInterfaceOption ShareInterface { get; set; }
+    // public bool FlatternNestUnions { get; set; } = true;
+    /// <summary>
+    /// Generate dangerous members, which provides unchecked access to union fields.<br/>
+    /// </summary>
+    public bool GenerateDangerousMembers { get; set; }
 }
 
 public sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))

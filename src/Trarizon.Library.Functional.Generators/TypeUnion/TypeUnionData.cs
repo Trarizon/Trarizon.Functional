@@ -6,6 +6,13 @@ namespace Trarizon.Library.Functional.Generators.TypeUnion;
 sealed record TypeUnionData(
     string FileHintName,
     TypeHierarchyInfo TypeHierarchy,
-    SequenceEquatableImmutableArray<VariantData> Variants
+    string TypeName,
+    string TypeFullName,
+    string TypeFullyQName,
+    SequenceEquatableImmutableArray<VariantData> Variants,
+    TypeUnionDataOptions Options
 );
 
+sealed record TypeUnionDataOptions(
+    bool GenerateDangerousMembers
+);

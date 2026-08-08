@@ -38,16 +38,25 @@ partial class TypeUnionGenerator
                 EmitConstructors(writer, data);
                 writer.WriteLine();
 
-                writer.WriteLineNoTabs("#region As");
+                writer.WriteLine("#region Cast");
+                writer.WriteLine();
+                EmitImplicitCastMethods(writer, data);
+                writer.WriteLine();
+                EmitExplicitCastMethods(writer, data);
+                writer.WriteLine();
+                writer.WriteLine("#endregion");
+                writer.WriteLine();
+
+                writer.WriteLine("#region As");
                 writer.WriteLine();
                 EmitAsMethod(writer, data, env);
                 writer.WriteLine();
                 EmitAsExactlyMethod(writer, data, env);
                 writer.WriteLine();
-                writer.WriteLineNoTabs("#endregion");
+                writer.WriteLine("#endregion");
                 writer.WriteLine();
 
-                writer.WriteLineNoTabs("#region Is");
+                writer.WriteLine("#region Is");
                 writer.WriteLine();
                 EmitIsMethod(writer, data, env);
                 writer.WriteLine();
@@ -55,16 +64,20 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 EmitIsExactlyMethod(writer, data, env);
                 writer.WriteLine();
-                writer.WriteLineNoTabs("#endregion");
+                writer.WriteLine("#endregion");
                 writer.WriteLine();
 
-                writer.WriteLineNoTabs("#region DangerousGetValueRef");
-                writer.WriteLine();
-                EmitDangerousGetValueMethods(writer, data, env);
-                writer.WriteLine();
-                writer.WriteLineNoTabs("#endregion");
-                writer.WriteLine();
                 EmitUnmanagedStructType(writer, data);
+                
+                if (data.Options.GenerateDangerousMembers)
+                {
+                    writer.WriteLine();
+                    writer.WriteLine("#region DangerousGetValueRef");
+                    writer.WriteLine();
+                    EmitDangerousGetValueMethods(writer, data, env);
+                    writer.WriteLine();
+                    writer.WriteLine("#endregion");
+                }
             }
         }
     }
@@ -90,18 +103,36 @@ partial class TypeUnionGenerator
 
     private void EmitConstructors(IndentedTextWriter writer, TypeUnionData data)
     {
-        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is not VariantTypeKind.Void).JoinWriteEmptyLine(writer))
+        foreach (var variant in data.Variants.JoinWriteEmptyLine(writer))
         {
-            var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
-            var cast = variant.TypeData.TypeKind.IsPointer ? $"(global::System.IntPtr)" : "";
-            writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public {{@unsafe}}{{data.TypeHierarchy.Name}}({{variant.TypeData.FullyQName}} value)
-                {
-                    this.__um_flag = {{variant.Id}}u;
-                    {{ExprVariantFieldAccess(variant)}} = {{cast}}value;
-                }
-                """);
+            if (variant.TypeData.TypeKind is VariantTypeKind.Void)
+            {
+                writer.WriteLine(Utils.GeneratedCodeAttributeList);
+                writer.WriteMultipleLines($$"""
+                    public static {{data.TypeFullyQName}} Void
+                    {
+                        get
+                        {
+                            {{data.TypeFullyQName}} value = default({{data.TypeFullyQName}});
+                            global::System.Runtime.CompilerServices.Unsafe.AsRef(in value.__um_flag) = {{variant.Id}}u;
+                            return value;
+                        }
+                    }
+                    """);
+            }
+            else
+            {
+                var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
+                var cast = variant.TypeData.TypeKind.IsPointer ? $"(global::System.IntPtr)" : "";
+                writer.WriteLine(Utils.GeneratedCodeAttributeList);
+                writer.WriteMultipleLines($$"""
+                    public {{@unsafe}}{{data.TypeName}}({{variant.TypeData.FullyQName}} value)
+                    {
+                        this.__um_flag = {{variant.Id}}u;
+                        {{ExprVariantFieldAccess(variant)}} = {{cast}}value;
+                    }
+                    """);
+            }
         }
     }
 
@@ -109,6 +140,33 @@ partial class TypeUnionGenerator
     {
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine("public bool IsNull { get { return this.__um_flag == 0u; } }");
+    }
+
+    private void EmitImplicitCastMethods(IndentedTextWriter writer, TypeUnionData data)
+    {
+        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is not VariantTypeKind.Void && !x.TypeData.IsInterface).JoinWriteEmptyLine(writer))
+        {
+            var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
+            writer.WriteLine(Utils.GeneratedCodeAttributeList);
+            writer.WriteLine($"public static {@unsafe}implicit operator {data.TypeFullyQName}({variant.TypeData.FullyQName} value) => new {data.TypeFullyQName}(value);");
+        }
+    }
+
+    private void EmitExplicitCastMethods(IndentedTextWriter writer, TypeUnionData data)
+    {
+        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is not VariantTypeKind.Void && !x.TypeData.IsInterface).JoinWriteEmptyLine(writer))
+        {
+            var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
+            writer.WriteLine(Utils.GeneratedCodeAttributeList);
+            writer.WriteMultipleLines($$"""
+                public static {{@unsafe}}explicit operator {{variant.TypeData.FullyQName}}({{data.TypeFullyQName}} value)
+                {
+                    if (value.__um_flag != {{variant.Id}}u)
+                        throw new InvalidCastException($"Unable to cast {{data.TypeFullName}} to {{variant.TypeData.FullName}}");
+                    return {{ExprVariantToT(variant, variant.TypeData.FullyQName, "value")}};
+                }
+                """);
+        }
     }
 
     // emit: As
@@ -121,7 +179,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public readonly T? As<T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
-            writer.WriteLine("switch(this.__um_flag)");
+            writer.WriteLine("switch (this.__um_flag)");
             using (writer.EnterBracketIndentScope('{'))
             {
                 foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
@@ -198,7 +256,7 @@ partial class TypeUnionGenerator
 
         // delegate*<>
 
-        foreach(var variant in data.Variants.Where(x=>x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
         {
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
@@ -289,9 +347,9 @@ partial class TypeUnionGenerator
 
         // delegate*<>*
 
-        foreach(var variant in data.Variants.Where(x=>x.TypeData.IsNonVoidPointer && x.TypeData.FinalPointerAtType.TypeKind is VariantTypeKind.FunctionPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.IsNonVoidPointer && x.TypeData.FinalPointerAtType.TypeKind is VariantTypeKind.FunctionPointer))
         {
-            var pointerLevel=variant.TypeData.PointerLevel <=1 ? "" : $"{variant.TypeData.PointerLevel}";
+            var pointerLevel = variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}";
 
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
@@ -301,7 +359,7 @@ partial class TypeUnionGenerator
                 {
                     if (this.__um_flag == {{variant.Id}}u)
                         return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                    return defalut({{variant.TypeData.FullyQName}});
+                    return default({{variant.TypeData.FullyQName}});
                 }
                 """);
         }
@@ -317,7 +375,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public readonly bool Is<T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
-            writer.WriteLine("switch(this.__um_flag)");
+            writer.WriteLine("switch (this.__um_flag)");
             using (writer.EnterBracketIndentScope('{'))
             {
                 foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
@@ -422,7 +480,7 @@ partial class TypeUnionGenerator
 
         // delegate*<>
 
-        foreach(var variant in data.Variants.Where(x=>x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
         {
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
@@ -499,9 +557,9 @@ partial class TypeUnionGenerator
 
         // delegate*<>*
 
-        foreach(var variant in data.Variants.Where(x=>x.TypeData.IsNonVoidPointer && x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.IsNonVoidPointer && x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
         {
-            var ptrLv=variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}";
+            var ptrLv = variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}";
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
@@ -654,7 +712,7 @@ partial class TypeUnionGenerator
         };
     }
 
-    private string ExprVariantRefToT(VariantData variant, string targetType = "T")
+    private string ExprVariantRefToT(VariantData variant, string targetType = "T", string @this = "this")
     {
         var fieldFullyQualifiedTypeName = variant.TypeData.TypeKind switch
         {
@@ -663,14 +721,14 @@ partial class TypeUnionGenerator
             _ => variant.TypeData.FullyQName,
         };
         if (fieldFullyQualifiedTypeName == targetType)
-            return ExprVariantFieldAccess(variant);
-        return $"global::System.Runtime.CompilerServices.Unsafe.As<{fieldFullyQualifiedTypeName}, {targetType}>(ref global::System.Runtime.CompilerServices.Unsafe.AsRef<{fieldFullyQualifiedTypeName}>(in {ExprVariantFieldAccess(variant)}))";
+            return ExprVariantFieldAccess(variant, @this);
+        return $"global::System.Runtime.CompilerServices.Unsafe.As<{fieldFullyQualifiedTypeName}, {targetType}>(ref global::System.Runtime.CompilerServices.Unsafe.AsRef<{fieldFullyQualifiedTypeName}>(in {ExprVariantFieldAccess(variant, @this)}))";
     }
 
-    private string ExprVariantToT(VariantData variant, string? targetType = null)
+    private string ExprVariantToT(VariantData variant, string? targetType = null, string @this = "this")
     {
         if (!variant.TypeData.TypeKind.IsPointer)
-            return ExprVariantRefToT(variant, targetType ?? "T");
+            return ExprVariantRefToT(variant, targetType ?? "T", @this);
 
         if (targetType is null)
         {
@@ -680,7 +738,7 @@ partial class TypeUnionGenerator
             targetType = chars.ToString();
         }
 
-        return $"({targetType}){ExprVariantFieldAccess(variant)}";
+        return $"({targetType}){ExprVariantFieldAccess(variant, @this)}";
     }
 
     // doc

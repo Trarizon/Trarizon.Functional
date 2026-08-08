@@ -13,6 +13,7 @@ sealed record VariantData(
 );
 
 record VariantTypeData(
+    string FullName,
     string FullyQName,
     string MinimalQName,
     VariantTypeKind TypeKind,
@@ -29,6 +30,7 @@ record VariantTypeData(
 
     public static VariantTypeData Create(ITypeSymbol type)
     {
+        var fname = type.ToDisplayString();
         var fqname = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         var mqname = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
@@ -63,7 +65,7 @@ record VariantTypeData(
             vtk = VariantTypeKind.Managed;
             isInterface = false;
         }
-        return new(fqname, mqname, vtk, type.IsRefLikeType, isInterface, sub);
+        return new(fname, fqname, mqname, vtk, type.IsRefLikeType, isInterface, sub);
     }
 }
 

@@ -16,6 +16,12 @@ internal static class Utils
     public const string NullableEnableTrivia = "#nullable enable";
 
     public static IEnumerable<T> JoinWriteEmptyLine<T>(this IEnumerable<T> source, TextWriter writer)
+        => source.JoinAction(writer, (v, s) => s.WriteLine());
+
+    public static IEnumerable<T> JoinAction<T>(this IEnumerable<T> source, Action<T> action)
+        => source.JoinAction(action, (v, s) => s(v));
+
+    public static IEnumerable<T> JoinAction<T, TState>(this IEnumerable<T> source, TState state, Action<T, TState> action)
     {
         using var enumerator = source.GetEnumerator();
         if (!enumerator.MoveNext())
@@ -24,7 +30,7 @@ internal static class Utils
         while (enumerator.MoveNext())
         {
             yield return current;
-            writer.WriteLine();
+            action(current, state);
             current = enumerator.Current;
         }
         yield return current;
