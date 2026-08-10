@@ -11,7 +11,10 @@ sealed record TypeUnionData(
     string TypeFullyQName,
     SequenceEquatableImmutableArray<VariantData> Variants,
     TypeUnionDataOptions Options
-);
+)
+{
+    public bool IsRefStruct =>Variants.Any(x => x.TypeData.IsRefLikeType);
+}
 
 sealed record TypeUnionDataOptions(
     bool GenerateDangerousMembers,
