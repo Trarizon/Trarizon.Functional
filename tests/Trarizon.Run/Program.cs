@@ -5,6 +5,14 @@ using Trarizon.Library.Functional.Unions;
 
 Console.WriteLine("Hello, World!");
 
+Optional.Of(1).Cast<string>();
+Result.Success<int, string>(1).Cast<string,int>();
+
+IEnumerable<int> a = [];
+
+a.OfType<string>();
+
+
 struct A { }
 
 namespace N

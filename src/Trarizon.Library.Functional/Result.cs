@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Trarizon.Library.Functional.Internals;
 using Trarizon.Library.Functional.Unions;
 
 namespace Trarizon.Library.Functional;
@@ -171,11 +172,13 @@ public readonly partial struct Result<T, TError>
     public static implicit operator Result<T, TError>(Result.SuccessBuilder<T> builder) => new(builder._value);
     public static implicit operator Result<T, TError>(Result.FailureBuilder<TError> builder) => new(builder._error);
 
-
+    [CastMethod([0], [0])]
     public Result<TResult, TError> Cast<TResult>() => IsSuccess ? new((TResult)(object)_value) : new(_error);
 
+    [CastMethod([1], [0])]
     public Result<T, TNewError> CastError<TNewError>() => IsFailure ? new((TNewError)(object)_error) : new(_value);
 
+    [CastMethod([0, 1], [0, 1])]
     public Result<TResult, TNewError> Cast<TResult, TNewError>() => IsSuccess ? new((TResult)(object)_value) : new((TNewError)(object)_error);
 
     public override string ToString() => (IsSuccess ? _value.ToString() : _error.ToString()) ?? "";

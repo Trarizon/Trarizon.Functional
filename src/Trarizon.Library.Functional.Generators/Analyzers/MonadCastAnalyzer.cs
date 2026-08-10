@@ -15,7 +15,7 @@ internal sealed class MonadCastAnalyzer : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor InvalidCast = new(
         "TRAFNL0001",
         "Invalid cast",
-        "Cast type '{0}' to '{1}' may cause InvalidCastException",
+        "Cast type '{0}' to '{1}' will alway fail",
         "Trarizon.Library.Functional",
         DiagnosticSeverity.Warning,
         true);
@@ -29,50 +29,14 @@ internal sealed class MonadCastAnalyzer : DiagnosticAnalyzer
         {
             var compilation = context.Compilation;
 
-            // Optional
-
-            if (!compilation.TryGetTypeByMetadataName("Trarizon.Library.Functional.Optional`1", out var optionalTypeSymbol))
-                return;
-            var castMethodSymbol = optionalTypeSymbol.GetMembers("Cast")
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault();
-            if (castMethodSymbol is null)
+            if (!compilation.TryGetTypeByMetadataName("Trarizon.Library.Functional.Internals.CastMethodAttribute", out var attrSymbol))
                 return;
 
-            context.RegisterOperationAction(AnalysisAction(castMethodSymbol, (0, 0)), OperationKind.Invocation);
-
-            // Result
-
-            if (!compilation.TryGetTypeByMetadataName("Trarizon.Library.Functional.Result`2", out var resultTypeSymbol))
-                return;
-
-            var resultCastMethodSymbol = resultTypeSymbol.GetMembers("Cast")
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(x => x.TypeParameters.Length == 1);
-            if (resultCastMethodSymbol is not null)
-            {
-                context.RegisterOperationAction(AnalysisAction(resultCastMethodSymbol, (0, 0)), OperationKind.Invocation);
-            }
-
-            var resultCastMethodSymbol2 = resultTypeSymbol.GetMembers("Cast")
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(x => x.TypeParameters.Length == 2);
-            if (resultCastMethodSymbol2 is not null)
-            {
-                context.RegisterOperationAction(AnalysisAction(resultCastMethodSymbol2, (0, 0), (1, 1)), OperationKind.Invocation);
-            }
-
-            var resultCastMethodSymbol3 = resultTypeSymbol.GetMembers("CastError")
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault();
-            if (resultCastMethodSymbol3 is not null)
-            {
-                context.RegisterOperationAction(AnalysisAction(resultCastMethodSymbol3, (1, 0)), OperationKind.Invocation);
-            }
+            context.RegisterOperationAction(AnalysisAction(attrSymbol), OperationKind.Invocation);
         });
     }
 
-    private Action<OperationAnalysisContext> AnalysisAction(IMethodSymbol castMethodSymbol, params (int Type, int Method)[] typeArgPairs)
+    private Action<OperationAnalysisContext> AnalysisAction(INamedTypeSymbol attrTypeSymbol)
     {
         return context =>
         {
@@ -80,16 +44,20 @@ internal sealed class MonadCastAnalyzer : DiagnosticAnalyzer
             if (operation.Instance?.Type is not INamedTypeSymbol instanceType)
                 return;
 
-            if (SymbolEqualityComparer.Default.Equals(operation.TargetMethod.OriginalDefinition, castMethodSymbol))
-            {
-                foreach (var (typeTypeArg, methodTypeArg) in typeArgPairs)
-                {
-                    var fromType = instanceType.TypeArguments[typeTypeArg];
-                    var toType = operation.TargetMethod.TypeArguments[methodTypeArg];
+            if (!operation.TargetMethod.OriginalDefinition.TryGetAttributeData(attrTypeSymbol, out var attr))
+                return;
 
-                    if (MaybeCastable(fromType, toType, context.Compilation) is not true)
-                        context.ReportDiagnostic(CreateDiagnostic(operation, fromType, toType));
-                }
+            var typeTypPrmIndices = attr.GetConstructorArgument(0).CastArray<int>();
+            var methodTypePrmIndices = attr.GetConstructorArgument(1).CastArray<int>();
+
+            var length = Math.Min(typeTypPrmIndices.Length, methodTypePrmIndices.Length);
+            for (int i = 0; i < length; i++)
+            {
+                var fromType = instanceType.TypeArguments[typeTypPrmIndices[i]];
+                var toType = operation.TargetMethod.TypeArguments[methodTypePrmIndices[i]];
+
+                if (MaybeCastable(fromType, toType, context.Compilation) is false)
+                    context.ReportDiagnostic(CreateDiagnostic(operation, fromType, toType));
             }
         };
     }

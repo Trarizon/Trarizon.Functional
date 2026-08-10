@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Trarizon.Library.Functional.Internals;
 using Trarizon.Library.Functional.Unions;
 
 namespace Trarizon.Library.Functional;
@@ -81,7 +82,9 @@ public readonly partial struct Optional<T>
     public static implicit operator Optional<T>(Optional.NoneBuilder _) => default;
     public static implicit operator Optional<T>(T value) => new(value);
 
+    [CastMethod([0], [0])]
     public Optional<TResult> Cast<TResult>() => HasValue ? new((TResult)(object)_value) : default;
+    [CastMethod([0], [0])]
     public Optional<TResult> OfType<TResult>() => HasValue && _value is TResult r ? new(r) : default;
 
     public override string ToString() => HasValue ? _value.ToString() ?? "" : "";
