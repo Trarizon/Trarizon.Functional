@@ -18,5 +18,5 @@ sealed record TypeUnionData(
 
 sealed record TypeUnionDataOptions(
     bool GenerateDangerousMembers,
-    bool AlwaysGenerateSeperateMethodsForRefStruct
+    bool AlwaysGenerateSeparateMethodsForRefStruct
 );

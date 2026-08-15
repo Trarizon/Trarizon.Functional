@@ -39,7 +39,7 @@ namespace N
     typeof(float),
     typeof(void*), typeof(int*),
     GenerateDangerousMembers = true,
-    AlwaysGenerateSeperateMethodsForRefStruct = true)]
+    AlwaysGenerateSeparateMethodsForRefStruct = true)]
 partial struct MyUnion : IEquatable<MyUnion>
 {
 }

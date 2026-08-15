@@ -15,7 +15,7 @@ public class TypeUnionAttribute(params Type[] types) : Attribute
     /// <summary>
     /// Generate separate <c>As</c> and <c>Is</c> methods for <c>ref struct</c> types even if the runtime supports <c>allows ref struct</c>.
     /// </summary>
-    public bool AlwaysGenerateSeperateMethodsForRefStruct { get; set; }
+    public bool AlwaysGenerateSeparateMethodsForRefStruct { get; set; }
 }
 
 internal sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))

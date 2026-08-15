@@ -158,7 +158,7 @@ partial class TypeUnionGenerator
             variantDatas.ToSequenceEquatableImmutableArray(),
             new TypeUnionDataOptions(
                 GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>(),
-                AlwaysGenerateSeperateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeperateMethodsForRefStruct").CastValueOrDefault<bool>()
+                AlwaysGenerateSeparateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeparateMethodsForRefStruct").CastValueOrDefault<bool>()
             )
         );
     }

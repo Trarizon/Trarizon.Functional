@@ -513,7 +513,7 @@ ref partial struct MyUnion
 
 - `GenerateDangerousMembers`：默认值为`false`。生成一系列DangerousGetValueRef私有方法，提供根据类型对字段的直接访问。
   - 不设为true也可以访问，因为字段本身就是private可读的。方法只是提供一个更便捷的接口。
-- `AlwaysGenerateSeperateMethodsForRefStruct`：即使运行时支持`allows ref struct`，也会为`ref struct` 生成单独的`As`与`Is`方法。
+- `AlwaysGenerateSeparateMethodsForRefStruct`：即使运行时支持`allows ref struct`，也会为`ref struct` 生成单独的`As`与`Is`方法。
 
 #### 方法
 

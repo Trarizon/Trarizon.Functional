@@ -248,7 +248,7 @@ partial class TypeUnionGenerator
 
         // ref struct
 
-        if (!env.AllowsRefStruct || data.Options.AlwaysGenerateSeperateMethodsForRefStruct)
+        if (!env.AllowsRefStruct || data.Options.AlwaysGenerateSeparateMethodsForRefStruct)
         {
             // For old runtime, emit specialized method for ref-like type
             foreach (var variant in data.Variants.Where(x => x.TypeData.IsRefLikeType))
@@ -477,7 +477,7 @@ partial class TypeUnionGenerator
 
         // ref struct
 
-        if (!env.AllowsRefStruct || data.Options.AlwaysGenerateSeperateMethodsForRefStruct)
+        if (!env.AllowsRefStruct || data.Options.AlwaysGenerateSeparateMethodsForRefStruct)
         {
             foreach (var variant in data.Variants.Where(x => x.TypeData.IsRefLikeType))
             {
@@ -786,7 +786,7 @@ partial class TypeUnionGenerator
 
         // ref struct
 
-        if ((!env.AllowsRefStruct || data.Options.AlwaysGenerateSeperateMethodsForRefStruct) && data.Variants.Any(x => x.TypeData.IsRefLikeType))
+        if ((!env.AllowsRefStruct || data.Options.AlwaysGenerateSeparateMethodsForRefStruct) && data.Variants.Any(x => x.TypeData.IsRefLikeType))
         {
             foreach (var variant in data.Variants.Where(x => x.TypeData.IsRefLikeType))
             {
