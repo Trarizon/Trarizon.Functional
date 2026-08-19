@@ -15,6 +15,7 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
     private record class Env(
         bool MaybeNull,
         bool UnscopedRef,
+        bool IUnion,
         string? TargetFramework,
         LanguageVersion LanguageVersion
     )
@@ -57,13 +58,14 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
         {
             bool maybeNull = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute", out _);
             bool unscopedRef = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.UnscopedRefAttribute", out _);
-            return (maybeNull, unscopedRef);
+            bool iunion = compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.IUnion", out _);
+            return (maybeNull, unscopedRef, iunion);
         });
 
         var env = aco.Combine(po).Combine(apis).Select(static (x, ct) =>
         {
-            var ((tf, lv), (maybeNull, unscopedRef)) = x;
-            return new Env(maybeNull, unscopedRef, tf, lv);
+            var ((tf, lv), (maybeNull, unscopedRef, iunion)) = x;
+            return new Env(maybeNull, unscopedRef, iunion, tf, lv);
         });
 
         var source = context.SyntaxProvider.ForAttributeWithMetadataName(

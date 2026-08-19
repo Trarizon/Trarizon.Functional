@@ -23,7 +23,10 @@ partial class TypeUnionGenerator
             writer.WriteLine("// UnscopedRefAttribute");
         if (data.Options.GenerateDangerousMembers)
             writer.WriteLine("// GenerateDangerousMembers");
-        bool hasEquality = data.Variants.All(x => x.TypeData.EqualityKind is not VariantTypeEqualityKind.None);
+        bool hasIUnion = env.IUnion && data.Variants.All(x => x.TypeData.IsObjectDerived);
+        if (hasIUnion)
+            writer.WriteLine("// IUnion");
+        bool hasEquality = data.Variants.All(x => x.TypeData.EqualityKind.IsValid);
         if (hasEquality)
             writer.WriteLine("// Equality");
 
@@ -31,7 +34,12 @@ partial class TypeUnionGenerator
 
         using (writer.EmitCSharpTypeHierarchy(data.TypeHierarchy.Parent, partial: true))
         {
-            var @interface= hasEquality ? $" : global::System.IEquatable<{data.TypeFullyQName}>" : "";
+            var interfaces = new List<string>();
+            if (hasIUnion)
+                interfaces.Add($"global::System.Runtime.CompilerServices.IUnion");
+            if (hasEquality)
+                interfaces.Add($"global::System.IEquatable<{data.TypeFullyQName}>");
+            var @interface = interfaces.Count == 0 ? "" : $" : {interfaces.JoinToString(", ")}";
 
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
             writer.WriteLine($"[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
@@ -80,6 +88,9 @@ partial class TypeUnionGenerator
                 EmitEqualityMethods(writer, data, env);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
+                writer.WriteLine();
+
+                EmitIUnionExplicitInterfaceMembers(writer, data, env);
                 writer.WriteLine();
 
                 EmitUnmanagedStructType(writer, data);
@@ -597,6 +608,8 @@ partial class TypeUnionGenerator
 
         var @unsafe = data.Variants.Any(x => x.TypeData.TypeKind.IsPointer) ? "unsafe " : "";
         var isRefLike = data.IsRefStruct;
+        var allowsRefStruct = env.AllowsRefStruct ? ", allows ref struct" : "";
+
 
         // Equals(T)
 
@@ -604,6 +617,8 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public {@unsafe}readonly bool Equals({data.TypeFullyQName} other)");
         using (writer.EnterBracketIndentScope('{'))
         {
+            bool requiresEqHelper = false;
+            
             writer.WriteMultipleLines("""
                 if (this.__um_flag != other.__um_flag)
                     return false;
@@ -619,17 +634,30 @@ partial class TypeUnionGenerator
                     {
                         VariantTypeEqualityKind.Unit => "true",
                         VariantTypeEqualityKind.Comparer => $"global::System.Collections.Generic.EqualityComparer<{variant.TypeData.FullyQName}>.Default.Equals({ExprVariantToT(variant, variant.TypeData.FullyQName)}, {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")})",
-                        VariantTypeEqualityKind.IEquatable => throw new NotImplementedException(),
+                        VariantTypeEqualityKind.IEquatable => $"__lm_IEquatable_Equals({ExprVariantToT(variant, variant.TypeData.FullyQName)}, {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")})",
                         VariantTypeEqualityKind.OperatorEq => $"{ExprVariantToT(variant, variant.TypeData.FullyQName)} == {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")}",
                         _ => null!,
                     };
+                    requiresEqHelper = variant.TypeData.EqualityKind == VariantTypeEqualityKind.IEquatable;
                     Debug.Assert(returnExpr is not null);
 
                     writer.WriteLine($"case {variant.Id}u: return {returnExpr};");
                 }
             }
             writer.WriteLine("return false;");
+
+            if (requiresEqHelper)
+            {
+                writer.WriteLine();
+                writer.WriteMultipleLines($"""
+                    static bool __lm_IEquatable_Equals<__TEq>(__TEq left, __TEq right) where __TEq : IEquatable<__TEq>{allowsRefStruct}
+                        => left.Equals(right);
+                    """);
+            }
+
         }
+
+        writer.WriteLine();
 
         // Equals(object)
 
@@ -646,11 +674,16 @@ partial class TypeUnionGenerator
             writer.WriteLine($"public {@unsafe}override bool Equals(object? obj) => obj is {data.TypeFullyQName} other ? this.Equals(other) : false;");
         }
 
+        writer.WriteLine();
+
         // operator ==
 
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public static {@unsafe}bool operator ==({data.TypeFullyQName} a, {data.TypeFullyQName} b) => a.Equals(b);");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public static {@unsafe}bool operator !=({data.TypeFullyQName} a, {data.TypeFullyQName} b) => !a.Equals(b);");
+
+        writer.WriteLine();
 
         // GetHashCode
 
@@ -817,6 +850,44 @@ partial class TypeUnionGenerator
             using (writer.EnterBracketIndentScope('{'))
             {
                 writer.WriteLine($"return ref *(void**)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref global::System.Runtime.CompilerServices.Unsafe.AsRef<__ut_Unmanaged>(in this.__um_unmanaged));");
+            }
+        }
+    }
+
+    // emit: IUnion
+
+    private void EmitIUnionExplicitInterfaceMembers(IndentedTextWriter writer, TypeUnionData data, Env env)
+    {
+        if (!env.IUnion)
+            return;
+
+        if (data.Variants.Any(x => !x.TypeData.IsObjectDerived))
+            return;
+
+        bool hasObj = data.Variants.Any(x => x.TypeData.TypeKind is VariantTypeKind.Reference);
+
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"object? global::System.Runtime.CompilerServices.IUnion.Value");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            writer.WriteLine("get");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                writer.WriteLine("switch (this.__um_flag)");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    writer.WriteLine($"case 0u:");
+                    writer.WriteLine($"    return null;");
+                    foreach (var variant in data.Variants)
+                    {
+                        writer.WriteLine($"case {variant.Id}u:");
+                        if (variant.TypeData.TypeKind is VariantTypeKind.Reference)
+                            writer.WriteLine($"    return {ExprVariantToT(variant, "object")};");
+                        else
+                            writer.WriteLine($"    return {ExprVariantToT(variant, variant.TypeData.FullyQName)};");
+                    }
+                }
+                writer.WriteLine("return null;");
             }
         }
     }

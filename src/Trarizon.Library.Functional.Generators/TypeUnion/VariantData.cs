@@ -26,6 +26,8 @@ record VariantTypeData(
     VariantTypeData? SubtypeData
 )
 {
+    public bool IsObjectDerived => !IsRefLikeType && TypeKind is VariantTypeKind.Managed or VariantTypeKind.Reference or VariantTypeKind.Unmanaged;
+
     public int PointerLevel => TypeKind is VariantTypeKind.Pointer ? 1 + SubtypeData!.PointerLevel : 0;
     public bool IsNonVoidPointer => TypeKind is VariantTypeKind.Pointer && !(SubtypeData!.TypeKind is VariantTypeKind.Void || SubtypeData.IsVoidPointer);
     public bool IsVoidPointer => TypeKind is VariantTypeKind.Pointer && (SubtypeData!.TypeKind is VariantTypeKind.Void || SubtypeData.IsVoidPointer);
