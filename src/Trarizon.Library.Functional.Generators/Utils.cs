@@ -1,5 +1,6 @@
-using System.CodeDom.Compiler;
+using System.Runtime.CompilerServices;
 using Trarizon.Library.Roslyn.CSharp;
+using Trarizon.Library.Roslyn.Pipeline;
 
 namespace Trarizon.Library.Functional.Generators;
 

@@ -1,19 +1,39 @@
 using Microsoft.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using Trarizon.Library.Functional.Generators.Internals;
 using Trarizon.Library.Roslyn;
 using CsTypeKind = Microsoft.CodeAnalysis.TypeKind;
 
 namespace Trarizon.Library.Functional.Generators.TypeUnion;
 
-sealed record VariantData(
-    int Id,
+readonly record struct VariantParseInfo(
+    uint Id,
     VariantTypeData TypeData,
-    int FieldId,
-    // Name that can use as identifier in code, MinimalQualifiedFormat maybe with number suffix
-    // for pointer type, it is the original type name,
+    uint FieldId,
     string ReadableIdentifier
 );
 
-record VariantTypeData(
+sealed record VariantData(
+    uint Id,
+    VariantTypeData TypeData,
+    uint FieldId,
+    // Name that can use as identifier in code, MinimalQualifiedFormat maybe with number suffix
+    // for pointer type, it is the original type name,
+    string ReadableIdentifier
+)
+{
+    public static VariantData Create(VariantParseInfo parseInfo)
+    {
+        return new VariantData(
+            parseInfo.Id,
+            parseInfo.TypeData,
+            parseInfo.FieldId,
+            parseInfo.ReadableIdentifier
+        );
+    }
+}
+
+record struct VariantTypeData(
     string FullName,
     string FullyQName,
     string MinimalQName,
@@ -23,15 +43,17 @@ record VariantTypeData(
     // For types that cannot use EqualityComparer<T> to compare, use this
     VariantTypeEqualityKind EqualityKind,
     // Pointer type has a subtype data
-    VariantTypeData? SubtypeData
+    EquatableBox<VariantTypeData>? SubtypeDataBox
 )
 {
+    public VariantTypeData? SubtypeData => SubtypeDataBox?.Value;
+
     public bool IsObjectDerived => !IsRefLikeType && TypeKind is VariantTypeKind.Managed or VariantTypeKind.Reference or VariantTypeKind.Unmanaged;
 
-    public int PointerLevel => TypeKind is VariantTypeKind.Pointer ? 1 + SubtypeData!.PointerLevel : 0;
-    public bool IsNonVoidPointer => TypeKind is VariantTypeKind.Pointer && !(SubtypeData!.TypeKind is VariantTypeKind.Void || SubtypeData.IsVoidPointer);
-    public bool IsVoidPointer => TypeKind is VariantTypeKind.Pointer && (SubtypeData!.TypeKind is VariantTypeKind.Void || SubtypeData.IsVoidPointer);
-    public VariantTypeData FinalPointerAtType => TypeKind is VariantTypeKind.Pointer ? SubtypeData!.FinalPointerAtType : this;
+    public int PointerLevel => TypeKind is VariantTypeKind.Pointer ? 1 + SubtypeData!.Value.PointerLevel : 0;
+    public bool IsNonVoidPointer => TypeKind is VariantTypeKind.Pointer && !(SubtypeData!.Value.TypeKind is VariantTypeKind.Void || SubtypeData.Value.IsVoidPointer);
+    public bool IsVoidPointer => TypeKind is VariantTypeKind.Pointer && (SubtypeData!.Value.TypeKind is VariantTypeKind.Void || SubtypeData.Value.IsVoidPointer);
+    public VariantTypeData FinalPointerAtType => TypeKind is VariantTypeKind.Pointer ? SubtypeData!.Value.FinalPointerAtType : this;
 
     public static VariantTypeData Create(ITypeSymbol type)
     {
@@ -79,7 +101,7 @@ record VariantTypeData(
             equalityKind = type.IsRefLikeType ? GetRefStructNonGenericEqualityKind(type) : VariantTypeEqualityKind.Comparer;
             isInterface = false;
         }
-        return new(fname, fqname, mqname, vtk, type.IsRefLikeType, isInterface, equalityKind, sub);
+        return new(fname, fqname, mqname, vtk, type.IsRefLikeType, isInterface, equalityKind, sub is null ? null : new(sub.Value));
 
         static VariantTypeEqualityKind GetRefStructNonGenericEqualityKind(ITypeSymbol type)
         {

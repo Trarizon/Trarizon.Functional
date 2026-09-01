@@ -10,7 +10,7 @@ namespace Trarizon.Library.Functional.Generators.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class MonadCastAnalyzer : DiagnosticAnalyzer
 {
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [InvalidCast];
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = ImmutableArray.Create(InvalidCast);
 
     private static readonly DiagnosticDescriptor InvalidCast = new(
         "TRAFNL0001",
@@ -47,8 +47,8 @@ internal sealed class MonadCastAnalyzer : DiagnosticAnalyzer
             if (!operation.TargetMethod.OriginalDefinition.TryGetAttributeData(attrTypeSymbol, out var attr))
                 return;
 
-            var typeTypPrmIndices = attr.GetConstructorArgument(0).CastArray<int>();
-            var methodTypePrmIndices = attr.GetConstructorArgument(1).CastArray<int>();
+            var typeTypPrmIndices = attr.GetConstructorArgument(0).CastArray<byte>();
+            var methodTypePrmIndices = attr.GetConstructorArgument(1).CastArray<byte>();
 
             var length = Math.Min(typeTypPrmIndices.Length, methodTypePrmIndices.Length);
             for (int i = 0; i < length; i++)

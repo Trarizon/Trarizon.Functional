@@ -3,4 +3,4 @@
 namespace Trarizon.Library.Functional.Internals;
 
 [AttributeUsage(AttributeTargets.Method)]
-internal sealed class CastMethodAttribute(int[] typeTypeParameterIndices, int[] methodTypeParameterIndices) : Attribute;
+internal sealed class CastMethodAttribute(byte[] typeTypeParameterIndices, byte[] methodTypeParameterIndices) : Attribute;

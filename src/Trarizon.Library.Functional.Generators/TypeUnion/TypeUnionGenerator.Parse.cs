@@ -2,15 +2,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using Trarizon.Library.Roslyn;
-using Trarizon.Library.Roslyn.CSharp;
 using Trarizon.Library.Roslyn.Pipeline;
-using Trarizon.Library.Roslyn.Pipeline.Collections;
 
 namespace Trarizon.Library.Functional.Generators.TypeUnion;
 
 partial class TypeUnionGenerator
 {
-    private TypeUnionData? Parse(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
+    private TypeUnionParseInfo? Parse(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
     {
         if (context is not
             {
@@ -24,7 +22,7 @@ partial class TypeUnionGenerator
         return ParseCore(syntax, symbol, attr, variantTypes, cancellationToken);
     }
 
-    private TypeUnionData? ParseGeneric(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
+    private TypeUnionParseInfo? ParseGeneric(GeneratorAttributeSyntaxContext context, CancellationToken cancellationToken)
     {
         if (context is not
             {
@@ -41,50 +39,41 @@ partial class TypeUnionGenerator
         return ParseCore(syntax, symbol, attr, variantTypes, cancellationToken);
     }
 
-    private TypeUnionData? ParseCore(StructDeclarationSyntax syntax, INamedTypeSymbol symbol, AttributeData attr, ImmutableArray<ITypeSymbol> variantTypes, CancellationToken cancellationToken)
+    private TypeUnionParseInfo? ParseCore(StructDeclarationSyntax syntax, INamedTypeSymbol symbol, AttributeData attr, ImmutableArray<ITypeSymbol> variantTypes, CancellationToken cancellationToken)
     {
         if (variantTypes.Length == 0)
             return null;
 
+        var variantSet = new HashSet<ITypeSymbol>(variantTypes, SymbolEqualityComparer.Default);
         int unmanagedIdx = 0;
-        var unmanagedMap = new Dictionary<ITypeSymbol, int>(SymbolEqualityComparer.Default);
         int managedIdx = 0;
-        var managedMap = new Dictionary<ITypeSymbol, int>(SymbolEqualityComparer.Default);
 
         var readableNameMap = new Dictionary<string, int>();
 
-        List<VariantData> variantDatas = new();
-        foreach (var (index, type) in variantTypes.Select((x, i) => (i, x)))
+        var variantDatas = ImmutableArray.CreateBuilder<VariantParseInfo>(variantSet.Count);
+        foreach (var (index, type) in variantSet.Select((x, i) => (i, x)))
         {
-            var id = index + 1;
+            uint id = (uint)index + 1;
 
-            int fieldId;
+            uint fieldId;
             if (type.IsReferenceType)
             {
                 fieldId = default;
             }
             else if (type.IsUnmanagedType)
             {
-                if (!unmanagedMap.TryGetValue(type, out var idx))
-                {
-                    idx = unmanagedIdx++;
-                    unmanagedMap.Add(type, idx);
-                }
-                fieldId = idx;
+                var idx = unmanagedIdx++;
+                fieldId = (uint)idx;
             }
             else
             {
-                if (!managedMap.TryGetValue(type, out var idx))
-                {
-                    idx = managedIdx++;
-                    managedMap.Add(type, idx);
-                }
-                fieldId = idx;
+                var idx = managedIdx++;
+                fieldId = (uint)idx;
             }
 
             var typeData = VariantTypeData.Create(type);
 
-            var data = new VariantData(
+            var data = new VariantParseInfo(
                 id, typeData, fieldId, GetUniqueReadableName(type, typeData, readableNameMap)
             );
             variantDatas.Add(data);
@@ -147,24 +136,52 @@ partial class TypeUnionGenerator
 
         var shareInterfaceOption = attr.GetNamedArgument("ShareInterface").CastValueOrDefault<UnionShareInterfaceOption>();
 
-        // var sharedInterfaces = ParseSharedInterfaces(variantTypes);
+        EquatableImmutableArray<TypeUnionInterfaceParseInfo> sharedInterfaces = [];
+        if (shareInterfaceOption == UnionShareInterfaceOption.Explicit)
+        {
+            sharedInterfaces = ParseSharedInterfaces(variantTypes);
+        }
 
-        return new TypeUnionData(
-            CodeHelpers.ToFileNameString(symbol.ToDisplayString()),
-            TypeHierarchyInfo.Create(symbol, syntax),
-            symbol.Name,
-            symbol.ToDisplayString(),
+        return new TypeUnionParseInfo(
+            TypeHierarchyInfo.Create(symbol),
             symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-            variantDatas.ToSequenceEquatableImmutableArray(),
+            symbol.ToDisplayString(),
+            symbol.Name,
             new TypeUnionDataOptions(
                 GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>(),
                 AlwaysGenerateSeparateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeparateMethodsForRefStruct").CastValueOrDefault<bool>()
-            )
+            ),
+            variantDatas.DrainToImmutable(),
+            sharedInterfaces
         );
     }
 
-    private SequenceEquatableImmutableArray<VariantInterfaceData> ParseSharedInterfaces(ImmutableArray<ITypeSymbol> variantTypes)
+    private EquatableImmutableArray<TypeUnionInterfaceParseInfo> ParseSharedInterfaces(ImmutableArray<ITypeSymbol> variantTypes)
     {
+        if (variantTypes.Length == 0)
+            return [];
+
+        var first = variantTypes[0];
+
+        if (variantTypes.Length == 1)
+        {
+            if (first.TypeKind is TypeKind.Interface)
+                return [InterfaceToData(first), .. first.AllInterfaces.Select(InterfaceToData)];
+            else
+                return first.AllInterfaces.Select(InterfaceToData).ToEquatableImmutableArray();
+        }
+
+        var firstInterfaces = first.TypeKind is TypeKind.Interface
+            ? first.AllInterfaces.Prepend(first)
+            : first.AllInterfaces;
+
+        var set = new HashSet<ITypeSymbol>(firstInterfaces, SymbolEqualityComparer.Default);
+        foreach (var type in variantTypes)
+        {
+            set.IntersectWith(type.AllInterfaces);
+        }
+        return set.Select(InterfaceToData).ToEquatableImmutableArray();
+
         var sharedInterfaces = variantTypes
             .Select(x =>
             {
@@ -178,7 +195,7 @@ partial class TypeUnionGenerator
             .Select(x =>
             {
                 var fqname = x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                return new VariantInterfaceData(
+                return new TypeUnionInterfaceParseInfo(
                     fqname,
                     x.GetMembers()
                         .Where(x =>
@@ -190,23 +207,131 @@ partial class TypeUnionGenerator
                             return true;
                         })
                         .Select(CollectInterfaceMemberData)
-                        .ToSequenceEquatableImmutableArray()
+                        .ToEquatableImmutableArray()
                 );
             })
-            .ToSequenceEquatableImmutableArray();
+            .ToEquatableImmutableArray();
 
         return sharedInterfaces;
 
-        VariantInterfaceMemberData CollectInterfaceMemberData(ISymbol symbol)
+        TypeUnionInterfaceParseInfo InterfaceToData(ITypeSymbol type)
+        {
+            var fqname = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            var members = type.GetMembers().Where(x =>
+            {
+                if (x.IsImplicitlyDeclared)
+                    return false;
+                if (x is IMethodSymbol m)
+                    return m.MethodKind is MethodKind.Ordinary;
+                return true;
+            });
+            return new TypeUnionInterfaceParseInfo(
+                fqname,
+                members.Select(CollectInterfaceMemberData).ToEquatableImmutableArray());
+        }
+
+        TypeUnionInterfaceMemberData CollectInterfaceMemberData(ISymbol symbol)
         {
             if (symbol is IPropertySymbol prop)
             {
-                return new VariantInterfaceMemberData(
-
-                );
+                if (prop.IsIndexer)
+                {
+                    return new TypeUnionInterfaceMemberData(
+                        prop.Name,
+                        InterfaceMemberKind.Indexer,
+                        prop.IsStatic,
+                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        prop switch
+                        {
+                            { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
+                            { ReturnsByRef: true } => RefKind.Ref,
+                            _ => RefKind.None,
+                        },
+                        prop.Parameters.Select(SelectParameterData).ToEquatableImmutableArray(),
+                        prop.ExplicitInterfaceImplementations.Length > 0
+                    )
+                    {
+                        HasGetOrAddAccessor = prop.GetMethod is not null,
+                        HasSetOrRemoveAccessor = prop.SetMethod is not null,
+                        IsInitAccessor = prop.SetMethod?.IsInitOnly ?? false,
+                    };
+                }
+                else
+                {
+                    return new TypeUnionInterfaceMemberData(
+                        prop.Name,
+                        InterfaceMemberKind.Property,
+                        prop.IsStatic,
+                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        prop switch
+                        {
+                            { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
+                            { ReturnsByRef: true } => RefKind.Ref,
+                            _ => RefKind.None,
+                        },
+                        [],
+                        prop.ExplicitInterfaceImplementations.Length > 0
+                    )
+                    {
+                        HasGetOrAddAccessor = prop.GetMethod is not null,
+                        HasSetOrRemoveAccessor = prop.SetMethod is not null,
+                        IsInitAccessor = prop.SetMethod?.IsInitOnly ?? false,
+                    };
+                }
+            }
+            if (symbol is IEventSymbol ev)
+            {
+                return new TypeUnionInterfaceMemberData(
+                    ev.Name,
+                    InterfaceMemberKind.Event,
+                    ev.IsStatic,
+                    ev.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    RefKind.None,
+                    [],
+                    ev.ExplicitInterfaceImplementations.Length > 0
+                )
+                {
+                    HasGetOrAddAccessor = ev.AddMethod is not null,
+                    HasSetOrRemoveAccessor = ev.RemoveMethod is not null,
+                };
+            }
+            if (symbol is IMethodSymbol m)
+            {
+                return new TypeUnionInterfaceMemberData(
+                    m.Name,
+                    InterfaceMemberKind.Method,
+                    m.IsStatic,
+                    m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    m switch
+                    {
+                        { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
+                        { ReturnsByRef: true } => RefKind.Ref,
+                        _ => RefKind.None,
+                    },
+                    m.Parameters.Select(SelectParameterData).ToEquatableImmutableArray(),
+                    m.ExplicitInterfaceImplementations.Length > 0
+                )
+                {
+                    TypeParameters = m.TypeParameters.Select(x => new TypeParameterInfo(x.Name, x.Variance)).ToEquatableImmutableArray()
+                };
             }
 
             return default;
+        }
+
+        ParameterInfo SelectParameterData(IParameterSymbol param)
+        {
+#if ROSLYN_5_3_0_OR_GREATER
+            var @scoped = param.ScopedKind is ScopedKind.None ? "" : "scoped";
+#else
+            var @scoped = "";
+#endif
+            return new ParameterInfo(
+                param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                param.RefKind,
+                @scoped,
+                param.Name
+            );
         }
     }
 }

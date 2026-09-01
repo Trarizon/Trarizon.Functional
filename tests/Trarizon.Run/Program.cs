@@ -1,4 +1,5 @@
-﻿using System.ComponentModel;
+﻿using System.Collections;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -15,9 +16,7 @@ IEnumerable<int> a = [];
 
 a.OfType<string>();
 
-
-struct A { }
-
+new MyUnion().AsExactly<IEnumerable<char>>();
 
 namespace System.Runtime.CompilerServices
 {
@@ -43,10 +42,23 @@ namespace N
 
         }
 
+        [TypeUnion(typeof(string),
+            ShareInterfaces = UnionShareInterfaceOption.Explicit)]
+        partial struct ShareIntf
+        {
+
+        }
+
+        struct EnumChar : IEnumerable<char>
+        {
+            public IEnumerator<char> GetEnumerator() => default!;
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        }
+
         ref struct D : IEquatable<D>
         {
             public bool Equals(D other) => throw new NotImplementedException();
-        
+
             // public static bool operator ==(D a, D b) => throw new NotImplementedException();
             // public static bool operator !=(D a, D b) => throw new NotImplementedException();
         }
@@ -58,7 +70,7 @@ namespace N
     typeof(string),
     typeof(int),
     typeof(JsonElement),
-    // typeof(ReadOnlySpan<char>),
+    typeof(ReadOnlySpan<char>),
     typeof(float),
     typeof(void*), typeof(int*),
     GenerateDangerousMembers = true,
