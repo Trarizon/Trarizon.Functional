@@ -1,11 +1,24 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace Trarizon.Library.Functional.Unions;
 
-namespace Trarizon.Library.Functional.Unions;
-
-internal interface ITypeUnion
+public interface ITypeUnion
 {
     bool IsNull { get; }
-    T? As<T>();
+    
+    T? As<T>()
+#if NET9_0_OR_GREATER
+        where T : allows ref struct
+#endif
+    ;
+
+    bool Is<T>()
+#if NET9_0_OR_GREATER
+        where T : allows ref struct
+#endif
+    ;
+    
+    bool Is<T>(out T? value)
+#if NET9_0_OR_GREATER
+        where T : allows ref struct
+#endif
+    ;
 }

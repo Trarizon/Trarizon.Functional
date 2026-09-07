@@ -11,4 +11,8 @@ public static class GeneratorHelpers
     [DoesNotReturn]
     public static void ThrowUnknownUnionCaseException()
         => throw new ArgumentOutOfRangeException();
+
+    [DoesNotReturn]
+    public static void ThrowInvalidCastException(string message)
+        => throw new InvalidCastException(message);
 }

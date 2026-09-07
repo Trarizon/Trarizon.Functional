@@ -47,7 +47,6 @@ namespace N
             ShareInterfaces = UnionShareInterfaceOption.Explicit)]
         partial struct ShareIntf
         {
-
         }
 
         interface IDo
