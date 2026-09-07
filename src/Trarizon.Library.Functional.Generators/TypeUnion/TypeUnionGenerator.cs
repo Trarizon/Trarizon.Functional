@@ -27,7 +27,7 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
             {
                 if (TargetFramework is null)
                     return false;
-#if ROSLYN_5_3_0_OR_GREATER
+#if ROSLYN_4_9_2_OR_GREATER
                 if (LanguageVersion < LanguageVersion.CSharp13)
                     return false;
 #endif
@@ -91,15 +91,20 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
             })
             .Where(x => x is not null);
 
-        context.RegisterSourceOutput(source.Combine(env), (context, source) =>
+        context.RegisterSourceOutput(source.Combine(env), SourceOutput);
+        context.RegisterSourceOutput(source2.Combine(env), SourceOutput);
+    }
+    static uint id;
+
+    private void SourceOutput(SourceProductionContext context, (TypeUnionParseInfo? Left, Env Right) source)
+    {
+        try
         {
-            try
+            var parseInfo = source.Left!.Value;
+            var env = source.Right;
+            if (parseInfo.Exception is ExceptionInfo ex)
             {
-                var parseInfo = source.Left!.Value;
-                var env = source.Right;
-                if (parseInfo.Exception is ExceptionInfo ex)
-                {
-                    context.AddSource($"{id++}.g.cs", $$"""
+                context.AddSource($"{id++}.g.cs", $$"""
                     // <generated>
                     partial struct A { public void Failure() { } }
                     /*
@@ -107,28 +112,25 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
                     {{ex.StackTrace}}
                     */
                     """);
-                    return;
-                }
-
-
-                var data = TypeUnionData.Create(parseInfo);
-                using var sw = new StringWriter();
-                using var writer = new IndentedTextWriter(sw);
-                EmitTypeUnion(writer, data, env);
-                context.AddSource(parseInfo.FileHintName, sw.ToString());
+                return;
             }
-            catch (Exception ex)
-            {
-                context.AddSource($"{id++}.g.cs", $$"""
-                    // <generated>
-                    partial struct A { public void Error() { } }
-                    /*
-                    {{ex.Message}}
-                    {{ex.StackTrace}}
-                    */
-                    """);
-            }
-        });
+
+            var data = TypeUnionData.Create(parseInfo);
+            using var sw = new StringWriter();
+            using var writer = new IndentedTextWriter(sw);
+            EmitTypeUnion(writer, data, env);
+            context.AddSource(parseInfo.FileHintName, parseInfo.SharedInterfaces.JoinToString("\n", x => "// " + x.TypeFQName) + "\n" + sw.ToString());
+        }
+        catch (Exception ex)
+        {
+            context.AddSource($"{id++}.g.cs", $$"""
+                // <generated>
+                partial struct A { public void Error() { } }
+                /*
+                {{ex.Message}}
+                {{ex.StackTrace}}
+                */
+                """);
+        }
     }
-    static uint id;
 }

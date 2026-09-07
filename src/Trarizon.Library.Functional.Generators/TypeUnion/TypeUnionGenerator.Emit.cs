@@ -907,6 +907,9 @@ partial class TypeUnionGenerator
 
     private void EmitSharedInterfaceImplementations(IndentedTextWriter writer, TypeUnionData data, Env env)
     {
+        const string ThrowNRE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowNullReferenceException()";
+        const string ThrowUUCE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowUnknownUnionCaseException()";
+
         foreach (var intf in data.SharedInterfaces)
         {
             foreach (var member in intf.Members)
@@ -943,14 +946,16 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})null).{member.Name};");
+                                        writer.WriteLine($"    {ThrowNRE};");
+                                        writer.WriteLine($"    return default!;");
                                         foreach (var variant in data.Variants)
                                         {
                                             writer.WriteLine($"case {variant.Id}u:");
                                             writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name};");
                                         }
                                     }
-                                    writer.WriteLine($"return null;");
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return default!;");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -962,7 +967,7 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})null).{member.Name} = value;");
+                                        writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
@@ -971,6 +976,8 @@ partial class TypeUnionGenerator
                                             writer.WriteLine($"    return;");
                                         }
                                     }
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return;");
                                 }
                             }
                         }
@@ -988,14 +995,16 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})null).{member.Name}[{arguments}];");
+                                        writer.WriteLine($"    {ThrowNRE};");
+                                        writer.WriteLine($"    return default!;");
                                         foreach (var variant in data.Variants)
                                         {
                                             writer.WriteLine($"case {variant.Id}u:");
-                                            writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name}[{arguments}];");
+                                            writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}];");
                                         }
                                     }
-                                    writer.WriteLine($"return null;");
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return default!;");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -1007,16 +1016,17 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})null).{member.Name}[{arguments}] = value;");
+                                        writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
                                             writer.WriteLine($"case {variant.Id}u:");
-                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name}[{arguments}] = value;");
+                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}] = value;");
                                             writer.WriteLine($"    return;");
                                         }
                                     }
-                                    writer.WriteLine($"return null;");
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return;");
                                 }
                             }
                         }
@@ -1034,7 +1044,7 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})null).{member.Name} += value;");
+                                        writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
@@ -1043,6 +1053,8 @@ partial class TypeUnionGenerator
                                             writer.WriteLine($"    return;");
                                         }
                                     }
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return;");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -1054,7 +1066,7 @@ partial class TypeUnionGenerator
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
                                         writer.WriteLine($"case 0u:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})null).{member.Name} -= value;");
+                                        writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
@@ -1063,6 +1075,8 @@ partial class TypeUnionGenerator
                                             writer.WriteLine($"    return;");
                                         }
                                     }
+                                    writer.WriteLine($"{ThrowUUCE};");
+                                    writer.WriteLine($"return;");
                                 }
                             }
                         }
@@ -1076,30 +1090,31 @@ partial class TypeUnionGenerator
                             using (writer.EnterBracketIndentScope('{'))
                             {
                                 writer.WriteLine($"case 0u:");
+                                writer.WriteLine($"    {ThrowNRE};");
                                 if (member.ReturnsVoid)
                                 {
-                                    writer.WriteLine($"    (({intf.TypeFQName})null).{member.Name}{tp}({arguments});");
                                     writer.WriteLine($"    return;");
                                     foreach (var variant in data.Variants)
                                     {
                                         writer.WriteLine($"case {variant.Id}u:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name}{tp}({arguments});");
+                                        writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
                                         writer.WriteLine($"    return;");
                                     }
                                 }
                                 else
                                 {
-                                    writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})null).{member.Name}{tp}({arguments});");
+                                    writer.WriteLine($"    return default!;");
                                     foreach (var variant in data.Variants)
                                     {
                                         writer.WriteLine($"case {variant.Id}u:");
-                                        writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name}{tp}({arguments});");
+                                        writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
                                     }
                                 }
                             }
+                            writer.WriteLine($"{ThrowUUCE};");
                             if (!member.ReturnsVoid)
                             {
-                                writer.WriteLine($"return null;");
+                                writer.WriteLine($"return default!;");
                             }
                         }
                         break;

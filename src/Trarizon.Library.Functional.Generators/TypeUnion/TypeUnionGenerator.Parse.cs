@@ -134,7 +134,7 @@ partial class TypeUnionGenerator
             }
         }
 
-        var shareInterfaceOption = attr.GetNamedArgument("ShareInterface").CastValueOrDefault<UnionShareInterfaceOption>();
+        var shareInterfaceOption = attr.GetNamedArgument("ShareInterfaces").CastValueOrDefault<UnionShareInterfaceOption>();
 
         EquatableImmutableArray<TypeUnionInterfaceParseInfo> sharedInterfaces = [];
         if (shareInterfaceOption == UnionShareInterfaceOption.Explicit)
@@ -165,54 +165,41 @@ partial class TypeUnionGenerator
 
         if (variantTypes.Length == 1)
         {
-            if (first.TypeKind is TypeKind.Interface)
-                return [InterfaceToData(first), .. first.AllInterfaces.Select(InterfaceToData)];
+            if (first.TypeKind is TypeKind.Interface && IsValidInterface(first))
+            {
+                return [
+                    InterfaceToData(first),
+                        .. first.AllInterfaces.Where(IsValidInterface).Select(InterfaceToData)
+                ];
+            }
             else
-                return first.AllInterfaces.Select(InterfaceToData).ToEquatableImmutableArray();
+                return first.AllInterfaces.Where(IsValidInterface).Select(InterfaceToData).ToEquatableImmutableArray();
         }
 
         var firstInterfaces = first.TypeKind is TypeKind.Interface
-            ? first.AllInterfaces.Prepend(first)
-            : first.AllInterfaces;
+            ? first.AllInterfaces.Prepend(first).Where(IsValidInterface)
+            : first.AllInterfaces.Where(IsValidInterface);
 
         var set = new HashSet<ITypeSymbol>(firstInterfaces, SymbolEqualityComparer.Default);
         foreach (var type in variantTypes)
         {
-            set.IntersectWith(type.AllInterfaces);
+            var intfs = type.TypeKind is TypeKind.Interface
+                ? type.AllInterfaces.Prepend(type).Where(IsValidInterface)
+                : type.AllInterfaces.Where(IsValidInterface);
+            set.IntersectWith(intfs);
         }
         return set.Select(InterfaceToData).ToEquatableImmutableArray();
 
-        var sharedInterfaces = variantTypes
-            .Select(x =>
+        // If interface has any static member, we do not implement it
+        bool IsValidInterface(ITypeSymbol intfType)
+        {
+            return intfType.GetMembers().All(x =>
             {
-                if (x.TypeKind is TypeKind.Interface)
-                    return x.AllInterfaces.AsEnumerable().Prepend(x);
-                else
-                    return x.AllInterfaces.AsEnumerable();
-            })
-            .Aggregate((l, r) => l.Intersect(r, (IEqualityComparer<ITypeSymbol>)SymbolEqualityComparer.Default))
-            // sharedInterfaces
-            .Select(x =>
-            {
-                var fqname = x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-                return new TypeUnionInterfaceParseInfo(
-                    fqname,
-                    x.GetMembers()
-                        .Where(x =>
-                        {
-                            if (x.IsImplicitlyDeclared)
-                                return false;
-                            if (x is IMethodSymbol m)
-                                return m.MethodKind is MethodKind.Ordinary;
-                            return true;
-                        })
-                        .Select(CollectInterfaceMemberData)
-                        .ToEquatableImmutableArray()
-                );
-            })
-            .ToEquatableImmutableArray();
-
-        return sharedInterfaces;
+                if (x.IsStatic)
+                    return false;
+                return true;
+            });
+        }
 
         TypeUnionInterfaceParseInfo InterfaceToData(ITypeSymbol type)
         {
@@ -240,7 +227,7 @@ partial class TypeUnionGenerator
                         prop.Name,
                         InterfaceMemberKind.Indexer,
                         prop.IsStatic,
-                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedWithNullableAnnotation),
                         prop switch
                         {
                             { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
@@ -262,7 +249,7 @@ partial class TypeUnionGenerator
                         prop.Name,
                         InterfaceMemberKind.Property,
                         prop.IsStatic,
-                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        prop.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedWithNullableAnnotation),
                         prop switch
                         {
                             { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
@@ -285,7 +272,7 @@ partial class TypeUnionGenerator
                     ev.Name,
                     InterfaceMemberKind.Event,
                     ev.IsStatic,
-                    ev.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    ev.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedWithNullableAnnotation),
                     RefKind.None,
                     [],
                     ev.ExplicitInterfaceImplementations.Length > 0
@@ -301,7 +288,7 @@ partial class TypeUnionGenerator
                     m.Name,
                     InterfaceMemberKind.Method,
                     m.IsStatic,
-                    m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    m.ReturnType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedWithNullableAnnotation),
                     m switch
                     {
                         { ReturnsByRefReadonly: true } => RefKind.RefReadOnly,
@@ -321,13 +308,13 @@ partial class TypeUnionGenerator
 
         ParameterInfo SelectParameterData(IParameterSymbol param)
         {
-#if ROSLYN_5_3_0_OR_GREATER
+#if ROSLYN_4_9_2_OR_GREATER
             var @scoped = param.ScopedKind is ScopedKind.None ? "" : "scoped";
 #else
             var @scoped = "";
 #endif
             return new ParameterInfo(
-                param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedWithNullableAnnotation),
                 param.RefKind,
                 @scoped,
                 param.Name

@@ -3,7 +3,7 @@ using Trarizon.Library.Roslyn.Pipeline;
 
 namespace Trarizon.Library.Functional.Generators.TypeUnion;
 
-public enum UnionShareInterfaceOption { Disabled, Enabled, Explicit, }
+public enum UnionShareInterfaceOption { Disabled, Explicit, }
 
 record struct TypeUnionInterfaceParseInfo(
     string TypeFQName,
@@ -13,7 +13,7 @@ record struct TypeUnionInterfaceParseInfo(
 record struct TypeUnionInterfaceMemberData(
     string Name,
     InterfaceMemberKind Kind,
-    bool IsStatic,
+    bool IsStatic, // The property is currently have no use, as interface with static member will not be generated
     string ReturnTypeFQName,
     RefKind ReturnTypeRefKind,
     EquatableImmutableArray<ParameterInfo> Parameters,

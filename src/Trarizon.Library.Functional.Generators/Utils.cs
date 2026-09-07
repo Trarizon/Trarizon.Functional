@@ -37,7 +37,7 @@ internal static class Utils
         yield return current;
     }
 
-    public static string JoinToString<T>(this IEnumerable<T> source, Func<T, string> toString, string separator)
+    public static string JoinToString<T>(this IEnumerable<T> source, string separator, Func<T, string> toString)
     {
         return string.Join(separator, source.Select(toString));
     }

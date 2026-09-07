@@ -1,6 +1,6 @@
 ﻿namespace Trarizon.Library.Functional.Unions;
 
-public enum UnionShareInterfaceOption { Disabled, Enabled, Explicit, }
+public enum UnionShareInterfaceOption { Disabled, Explicit, }
 
 [AttributeUsage(AttributeTargets.Struct)]
 public class TypeUnionAttribute(params Type[] types) : Attribute

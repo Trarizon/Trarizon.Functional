@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Trarizon.Library.Functional;
@@ -16,6 +17,7 @@ IEnumerable<int> a = [];
 
 a.OfType<string>();
 
+new MyUnion().As<IEnumerable<int>>();
 new MyUnion().AsExactly<IEnumerable<char>>();
 
 namespace System.Runtime.CompilerServices
@@ -39,18 +41,23 @@ namespace N
         [TypeUnion(typeof(int), typeof(string), typeof(D))]
         partial struct U
         {
-
         }
 
-        [TypeUnion(typeof(string),
+        [TypeUnion(typeof(IDo), typeof(EnumChar),
             ShareInterfaces = UnionShareInterfaceOption.Explicit)]
         partial struct ShareIntf
         {
 
         }
 
-        struct EnumChar : IEnumerable<char>
+        interface IDo
         {
+            void Do(string str);
+        }
+
+        struct EnumChar : IEnumerable<char>, IDo
+        {
+            public void Do(string str) => throw new NotImplementedException();
             public IEnumerator<char> GetEnumerator() => default!;
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }

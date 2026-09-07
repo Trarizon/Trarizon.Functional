@@ -2,11 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
-        <!-- <TrarizonRoslynVersion>Modern</TrarizonRoslynVersion> -->
-    </PropertyGroup>
-
-    <PropertyGroup Condition="$(TrarizonRoslynVersion) == 'Modern'">
-        <DefineConstants>$(DefineConstants);ROSLYN_5_3_0_OR_GREATER</DefineConstants>
+        <TrarizonRoslynVersion>Modern</TrarizonRoslynVersion>
     </PropertyGroup>
 
     <Import Project="..\SourceGenerator.props" />
@@ -17,10 +13,14 @@
 
     <!-- References -->
 
+    <PropertyGroup Condition="$(TrarizonRoslynVersion) == 'Modern'">
+        <DefineConstants>$(DefineConstants);ROSLYN_4_9_2_OR_GREATER</DefineConstants>
+    </PropertyGroup>
+
     <ItemGroup Condition="$(TrarizonRoslynVersion) == 'Modern'">
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     </ItemGroup>
-    <ItemGroup Condition="$(TrarizonRoslynVersion) == 'Legacy'">
+    <ItemGroup Condition="$(TrarizonRoslynVersion) != 'Modern'">
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" VersionOverride="4.3.0" />
     </ItemGroup>
 
