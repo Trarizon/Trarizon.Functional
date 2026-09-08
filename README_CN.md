@@ -81,9 +81,13 @@ var none = Optional.None.Build<int>(); // 返回Optional<int>
 
 使用`Trarizon.Library.Functional.Unions.TypeUnionAttribute`标记类型以生成type union。
 
+- 生成的类型的排列固定为`LayoutKind.Auto`
+- 生成的类型实现`Trarizon.Library.Functional.Unions.ITypeUnion`接口
+- 生成的引用类型字段重叠、非托管类型字段重叠、托管类型字段平铺
 - 支持`ref struct`，含有`ref struct`时union类型会标记为`ref struct`。
 - 支持指针类型
 - 支持`void`但没什么用
+- 支持共享接口
 
 ``` csharp
 [TypeUnion(
@@ -124,6 +128,9 @@ ref partial struct MyUnion
     public static explicit operator string(MyUnion value) => value.As<string>();
     // ...
 
+    public T Cast<T>() where T : allows ref struct
+        => /* ... */;
+
     public T? As<T>() where T : allows ref struct
     {
         return _flag switch
@@ -151,6 +158,12 @@ ref partial struct MyUnion
         => /* ... */;
 
     public bool IsExactly<T>() where T : allows ref struct
+        => /* ... */;
+
+    public bool Is<T>(out T value) where T : allows ref struct
+        => /* ... */;
+
+    public bool IsExactly<T>(out T value) where T : allows ref struct
         => /* ... */;
 
     [StructLayout(LayoutKind.Explicit)]
@@ -506,14 +519,12 @@ ref partial struct MyUnion
 
 </details>
 
-- 生成的类型的排列固定为`LayoutKind.Auto`
-- 所有引用类型会重叠；所有非托管值类型及指针会重叠；所有托管值类型不会重叠。
-
 ### 选项
 
 - `GenerateDangerousMembers`：默认值为`false`。生成一系列DangerousGetValueRef私有方法，提供根据类型对字段的直接访问。
   - 不设为true也可以访问，因为字段本身就是private可读的。方法只是提供一个更便捷的接口。
 - `AlwaysGenerateSeparateMethodsForRefStruct`：即使运行时支持`allows ref struct`，也会为`ref struct` 生成单独的`As`与`Is`方法。
+- `ShareInterfaces`: 默认值为`false`。让union实现所有variant都实现的接口，不含协变。
 
 #### 方法
 
@@ -523,11 +534,15 @@ ref partial struct MyUnion
 |explicit cast|将union类型转换为指定类型|
 |`ctor(T)`<br/>`Void`|构造函数，`void`由静态属性`Void`提供|
 |`IsNull`|所有类型都存在该属性，用于判定`default`值|
+|`Cast<T>()`|将union类型转换为指定类型。如果转换失败，会抛出异常。|
 |`As<T>()`|获取指定类型的实例。该方法会通过`as`检测其基类与接口|
 |`AsExactly<T>()`|获取指定类型的实例。该方法直接检测确定类型，不检测其基类与接口|
 |`Is<T>()`|检查实例是否为指定类型，会检测其基类与接口|
 |`IsExactly(Type)`|检查实例是否为指定类型|
 |`IsExactly<T>()`|检查实例是否为指定类型，不检测其基类与接口|
+|`Is<T>(out T value)`|检查实例是否为指定类型，并返回值，会检测其基类与接口|
+|`IsExactly<T>(out T value)`|检查实例是否为指定类型，并返回值，不检测其基类与接口|
+|`DangerousGetValueRef<T>()`|开启`GenerateDangerousMembers`后生成，不进行类型检查直接获取指定类型的值字段的引用|
 
 - 对于低版本(.NET 9.0以下)不支持`allows ref struct`方法时，会生成单独的`As`与`Is`方法用于检测该类型。
   - 例：`As_ReadOnlySpan_char()`、`Is_ReadOnlySpan_char()`
@@ -535,4 +550,5 @@ ref partial struct MyUnion
 - 存在void类型时，会生成`IsVoid()`方法
 - 存在指针类型时，会生成`AsPointer<T>()`，`AsVoidPointer()`, `IsPointer<T>()`、`IsVoidPointer()`方法
   - 对于ref struct指针，同样会生成单独的`AsPointer_ReadOnlySpan_char()`方法
+  - 多级指针生成`AsPointer2<T>()`等方法
 - 由于C#不支持接口的类型转换，因此不生成接口类型的隐式转换与显式转换方法。

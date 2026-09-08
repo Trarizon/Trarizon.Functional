@@ -136,7 +136,7 @@ partial class TypeUnionGenerator
 
         var shareInterfaceOption = attr.GetNamedArgument("ShareInterfaces").CastValueOrDefault<UnionShareInterfaceOption>();
 
-        EquatableImmutableArray<TypeUnionInterfaceParseInfo> sharedInterfaces = [];
+        EquatableImmutableArray<TypeUnionInterfaceParseInfo>? sharedInterfaces = null;
         if (shareInterfaceOption == UnionShareInterfaceOption.Explicit)
         {
             sharedInterfaces = ParseSharedInterfaces(variantTypes);

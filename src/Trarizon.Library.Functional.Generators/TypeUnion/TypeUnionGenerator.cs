@@ -61,7 +61,7 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
         {
             bool maybeNull = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute", out _);
             bool unscopedRef = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.UnscopedRefAttribute", out _);
-            bool iunion = compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.IUnion", out _);
+            bool iunion = false;// compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.IUnion", out _);
             return (maybeNull, unscopedRef, iunion);
         });
 
@@ -119,7 +119,7 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
             using var sw = new StringWriter();
             using var writer = new IndentedTextWriter(sw);
             EmitTypeUnion(writer, data, env);
-            context.AddSource(parseInfo.FileHintName, parseInfo.SharedInterfaces.JoinToString("\n", x => "// " + x.TypeFQName) + "\n" + sw.ToString());
+            context.AddSource(parseInfo.FileHintName, sw.ToString());
         }
         catch (Exception ex)
         {

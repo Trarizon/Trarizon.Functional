@@ -30,7 +30,7 @@ partial class TypeUnionGenerator
         bool hasEquality = data.Variants.All(x => x.TypeData.EqualityKind.IsValid);
         if (hasEquality)
             writer.WriteLine("// Equality");
-        if (data.SharedInterfaces.Any())
+        if (data.SharedInterfaces is not null)
             writer.WriteLine("// Shared Interfaces");
 
         writer.WriteLine();
@@ -45,7 +45,7 @@ partial class TypeUnionGenerator
                 interfaces.Add($"global::System.Runtime.CompilerServices.IUnion");
             if (hasEquality)
                 interfaces.Add($"global::System.IEquatable<{data.TypeFullyQName}>");
-            foreach (var interfaceInfo in data.SharedInterfaces)
+            foreach (var interfaceInfo in data.SharedInterfaces ?? [])
                 interfaces.Add(interfaceInfo.TypeFQName);
             var @interface = interfaces.Count == 0 ? "" : $" : {interfaces.JoinToString(", ")}";
 
@@ -109,12 +109,15 @@ partial class TypeUnionGenerator
                 EmitIUnionExplicitInterfaceMembers(writer, data, env);
                 writer.WriteLine();
 
-                writer.WriteLine("#region Shared Interfaces Implementations");
-                writer.WriteLine();
-                EmitSharedInterfaceImplementations(writer, data, env);
-                writer.WriteLine();
-                writer.WriteLine("#endregion");
-                writer.WriteLine();
+                if (data.SharedInterfaces?.Length > 0)
+                {
+                    writer.WriteLine("#region Shared Interfaces Implementations");
+                    writer.WriteLine();
+                    EmitSharedInterfaceImplementations(writer, data, env);
+                    writer.WriteLine();
+                    writer.WriteLine("#endregion");
+                    writer.WriteLine();
+                }
 
                 EmitUnmanagedStructType(writer, data);
 
@@ -134,7 +137,14 @@ partial class TypeUnionGenerator
     private void EmitFields(IndentedTextWriter writer, TypeUnionData data)
     {
         // __um_fieldName // union_member
-        writer.WriteLine($"private readonly uint __um_flag;");
+        var flagType = data.Variants.Length switch
+        {
+            <= byte.MaxValue => "byte",
+            <= ushort.MaxValue => "ushort",
+            _ => "uint",
+        };
+
+        writer.WriteLine($"private readonly {flagType} __um_flag;");
 
         if (data.Variants.Any(x => x.TypeData.TypeKind is VariantTypeKind.Reference))
         {
@@ -158,15 +168,15 @@ partial class TypeUnionGenerator
             {
                 writer.WriteLine(Utils.GeneratedCodeAttributeList);
                 writer.WriteMultipleLines($$"""
-                    public static {{data.TypeFullyQName}} Void
+                    private {{data.TypeName}}(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel _)
                     {
-                        get
-                        {
-                            {{data.TypeFullyQName}} value = default({{data.TypeFullyQName}});
-                            global::System.Runtime.CompilerServices.Unsafe.AsRef(in value.__um_flag) = {{variant.Id}}u;
-                            return value;
-                        }
+                        this.__um_flag = {{LiteralFlag(variant.Id, data)}};
                     }
+                    """);
+                writer.WriteLine();
+                writer.WriteLine(Utils.GeneratedCodeAttributeList);
+                writer.WriteMultipleLines($$"""
+                    public static {{data.TypeFullyQName}} Void { get { return new {{data.TypeFullyQName}}(default(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel)); } }
                     """);
             }
             else
@@ -177,7 +187,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public {{@unsafe}}{{data.TypeName}}({{variant.TypeData.FullyQName}} value)
                     {
-                        this.__um_flag = {{variant.Id}}u;
+                        this.__um_flag = {{LiteralFlag(variant.Id, data)}};
                         {{ExprVariantFieldAccess(variant)}} = {{cast}}value;
                     }
                     """);
@@ -188,7 +198,7 @@ partial class TypeUnionGenerator
     private void EmitNullProperty(IndentedTextWriter writer, TypeUnionData data)
     {
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine("public bool IsNull { get { return this.__um_flag == 0u; } }");
+        writer.WriteLine($"public bool IsNull {{ get {{ return this.__um_flag == {LiteralFlag(0, data)}; }} }}");
     }
 
     private void EmitImplicitCastMethods(IndentedTextWriter writer, TypeUnionData data)
@@ -210,12 +220,27 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public static {{@unsafe}}explicit operator {{variant.TypeData.FullyQName}}({{data.TypeFullyQName}} value)
                 {
-                    if (value.__um_flag != {{variant.Id}}u)
+                    if (value.__um_flag != {{LiteralFlag(variant.Id, data)}})
                         global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowInvalidCastException($"Unable to cast {{data.TypeFullName}} to {{variant.TypeData.FullName}}");
                     return {{ExprVariantToT(variant, variant.TypeData.FullyQName, "value")}};
                 }
                 """);
         }
+    }
+
+    private void EmitCastMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
+    {
+        var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
+        writer.WriteMultipleLines($$"""
+            {{Utils.GeneratedCodeAttributeList}}
+            [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+            public readonly T Cast<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(AllowsBaseTypes = true)] T>(){{@allows}}
+            {
+                if (!this.Is<T>(out var value))
+                    global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowInvalidCastException($"Unable to cast {{data.TypeFullName}} to typeof(T).Name");
+                return value;
+            }
+            """);
     }
 
     // emit: As
@@ -264,7 +289,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public readonly {{variant.TypeData.FullyQName}} As_{{variant.ReadableIdentifier}}()
                     {
-                        if (this.__um_flag == {{variant.Id}}u)
+                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                             return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                         return default({{variant.TypeData.FullyQName}});
                     }
@@ -282,7 +307,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly {{variant.TypeData.FullyQName}} AsFunctionPointer_{{variant.ReadableIdentifier}}()
                 {
-                    if (this.__um_flag == {{variant.Id}}u)
+                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                         return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                     return default({{variant.TypeData.FullyQName}});
                 }
@@ -321,7 +346,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly void{{stars}} AsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
                 {
-                    if (this.__um_flag == {{group.Id}}u)
+                    if (this.__um_flag == {{LiteralFlag(group.Id, data)}})
                         return {{ExprVariantToT(group, "void*")}};
                     return default(void{{stars}});
                 }
@@ -343,7 +368,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public unsafe readonly {{variant.TypeData.FullyQName}} AsPointer{{pointerLevel}}_{{variant.ReadableIdentifier}}()
                     {
-                        if (this.__um_flag == {{variant.Id}}u)
+                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                             return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                         return default({{variant.TypeData.FullyQName}});
                     }
@@ -363,7 +388,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly {{variant.TypeData.FullyQName}} AsPointer{{pointerLevel}}ToFunctionPointer_{{variant.ReadableIdentifier}}()
                 {
-                    if (this.__um_flag == {{variant.Id}}u)
+                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                         return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                     return default({{variant.TypeData.FullyQName}});
                 }
@@ -388,7 +413,7 @@ partial class TypeUnionGenerator
                 {
                     if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
                     {
-                        writer.WriteLine($"case {variant.Id}u:");
+                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                         using (writer.EnterBracketIndentScope('{'))
                         {
                             writer.WriteLine($"if (typeof(T) == typeof({variant.TypeData.FullyQName}))");
@@ -422,7 +447,7 @@ partial class TypeUnionGenerator
             {
                 writer.WriteMultipleLines($$"""
                     if (typeof({{variant.TypeData.FullyQName}}) == type)
-                        return this.__um_flag == {{variant.Id}}u;
+                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                     """);
             }
             writer.WriteLine("return false;");
@@ -444,7 +469,7 @@ partial class TypeUnionGenerator
                 {
                     writer.WriteMultipleLines($$"""
                         if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                            return this.__um_flag == {{variant.Id}}u;
+                            return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                         """);
                 }
             }
@@ -461,7 +486,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public readonly bool IsVoid()
                 {
-                    return this.__um_flag == {{voidVariant.Id}}u;
+                    return this.__um_flag == {{LiteralFlag(voidVariant.Id, data)}};
                 }
                 """);
         }
@@ -478,7 +503,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public readonly bool Is_{{variant.ReadableIdentifier}}()
                     {
-                        return this.__um_flag == {{variant.Id}}u;
+                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                     }
                     """);
             }
@@ -494,7 +519,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly bool IsFunctionPointer_{{variant.ReadableIdentifier}}()
                 {
-                    return this.__um_flag == {{variant.Id}}u;
+                    return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                 }
                 """);
         }
@@ -519,7 +544,7 @@ partial class TypeUnionGenerator
                     if (env.AllowsRefStruct || !variant.TypeData.FinalPointerAtType.IsRefLikeType)
                     {
                         writer.WriteLine($"if (typeof(T{stars}) == typeof({variant.TypeData.FullyQName}))");
-                        writer.WriteLine($"    return this.__um_flag == {variant.Id}u;");
+                        writer.WriteLine($"    return this.__um_flag == {LiteralFlag(variant.Id, data)};");
                     }
                 }
                 writer.WriteLine($"return false;");
@@ -537,7 +562,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly bool IsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
                 {
-                    return this.__um_flag == {{group.Id}}u;
+                    return this.__um_flag == {{LiteralFlag(group.Id, data)}};
                 }
                 """);
         }
@@ -555,7 +580,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public unsafe readonly bool IsPointer{{ptrLv}}_{{variant.ReadableIdentifier}}()
                     {
-                        return this.__um_flag == {{variant.Id}}u;
+                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                     }
                     """);
             }
@@ -572,7 +597,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly bool IsPointer{{ptrLv}}ToFunctionPointer_{{variant.ReadableIdentifier}}()
                 {
-                    return this.__um_flag == {{variant.Id}}u;
+                    return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
                 }
                 """);
         }
@@ -596,7 +621,7 @@ partial class TypeUnionGenerator
                 {
                     if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
                     {
-                        writer.WriteLine($"case {variant.Id}u:");
+                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                         using (writer.EnterBracketIndentScope('{'))
                         {
                             writer.WriteLine($"if (typeof(T) == typeof({variant.TypeData.FullyQName}))");
@@ -639,7 +664,7 @@ partial class TypeUnionGenerator
                     writer.WriteMultipleLines($$"""
                         if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
                         {
-                            if (this.__um_flag == {{variant.Id}}u)
+                            if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                             {
                                 value = {{ExprVariantToT(variant)}};
                                 return true;
@@ -681,7 +706,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public readonly bool Is_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
                     {
-                        if (this.__um_flag == {{variant.Id}}u)
+                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                         {
                             value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                             return true;
@@ -703,7 +728,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly bool IsFunctionPointer_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
                 {
-                    if (this.__um_flag == {{variant.Id}}u)
+                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                     {
                         value = {{ExprVariantToT(variant)}};
                         return true;
@@ -736,7 +761,7 @@ partial class TypeUnionGenerator
                         writer.WriteMultipleLines($$"""
                             if (typeof(T{{stars}}) == typeof({{variant.TypeData.FullyQName}}))
                             {
-                                if (this.__um_flag == {{variant.Id}}u)
+                                if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                                 {
                                     value = {{ExprVariantToT(variant, $"T{stars}")}};
                                     return true;
@@ -781,7 +806,7 @@ partial class TypeUnionGenerator
                 writer.WriteMultipleLines($$"""
                     public unsafe readonly bool IsPointer{{ptrLv}}_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
                     {
-                        if (this.__um_flag == {{variant.Id}}u)
+                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                         {
                             value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                             return true;
@@ -804,7 +829,7 @@ partial class TypeUnionGenerator
             writer.WriteMultipleLines($$"""
                 public unsafe readonly bool IsPointer{{ptrLv}}ToFunctionPointer_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
                 {
-                    if (this.__um_flag == {{variant.Id}}u)
+                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
                     {
                         value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
                         return true;
@@ -845,7 +870,7 @@ partial class TypeUnionGenerator
             writer.WriteLine("switch (this.__um_flag)");
             using (writer.EnterBracketIndentScope('{'))
             {
-                writer.WriteLine($"case 0u: return true;");
+                writer.WriteLine($"case {LiteralFlag(0, data)}: return true;");
                 foreach (var variant in data.Variants)
                 {
                     string returnExpr = variant.TypeData.EqualityKind switch
@@ -859,7 +884,7 @@ partial class TypeUnionGenerator
                     requiresEqHelper = variant.TypeData.EqualityKind == VariantTypeEqualityKind.IEquatable;
                     Debug.Assert(returnExpr is not null);
 
-                    writer.WriteLine($"case {variant.Id}u: return {returnExpr};");
+                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: return {returnExpr};");
                 }
             }
             writer.WriteLine("return false;");
@@ -933,10 +958,10 @@ partial class TypeUnionGenerator
                                 case VariantTypeKind.Void:
                                     break;
                                 case { IsPointer: true }:
-                                    writer.WriteLine($"case {variant.Id}u: hash = (hash * 397) ^ {ExprVariantFieldAccess(variant)}.GetHashCode(); break;");
+                                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: hash = (hash * 397) ^ {ExprVariantFieldAccess(variant)}.GetHashCode(); break;");
                                     break;
                                 default:
-                                    writer.WriteLine($"case {variant.Id}u: hash = (hash * 397) ^ {ExprVariantToT(variant, variant.TypeData.FullyQName)}.GetHashCode(); break;");
+                                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: hash = (hash * 397) ^ {ExprVariantToT(variant, variant.TypeData.FullyQName)}.GetHashCode(); break;");
                                     break;
                             }
                         }
@@ -981,7 +1006,7 @@ partial class TypeUnionGenerator
         writer.WriteLine(Utils.AggressiveInliningAttributeList);
         if (env.UnscopedRef)
             writer.WriteLine(Utils.UnscopedRefAttributeList);
-        writer.WriteLine($"private readonly ref readonly T DangerousGetValueRef<T>() where T : class");
+        writer.WriteLine($"private readonly ref readonly T DangerousGetValueRef<T>()");
         using (writer.EnterBracketIndentScope('{'))
         {
             if (data.Variants.Any(x => x.TypeData.TypeKind is VariantTypeKind.Reference))
@@ -1063,11 +1088,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine("switch (this.__um_flag)");
                 using (writer.EnterBracketIndentScope('{'))
                 {
-                    writer.WriteLine($"case 0u:");
+                    writer.WriteLine($"case {LiteralFlag(0, data)}:");
                     writer.WriteLine($"    return null;");
                     foreach (var variant in data.Variants)
                     {
-                        writer.WriteLine($"case {variant.Id}u:");
+                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                         if (variant.TypeData.TypeKind is VariantTypeKind.Reference)
                             writer.WriteLine($"    return {ExprVariantToT(variant, "object")};");
                         else
@@ -1086,7 +1111,7 @@ partial class TypeUnionGenerator
         const string ThrowNRE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowNullReferenceException()";
         const string ThrowUUCE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowUnknownUnionCaseException()";
 
-        foreach (var intf in data.SharedInterfaces)
+        foreach (var intf in data.SharedInterfaces ?? [])
         {
             foreach (var member in intf.Members)
             {
@@ -1121,12 +1146,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return default!;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name};");
                                         }
                                     }
@@ -1142,12 +1167,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} = value;");
                                             writer.WriteLine($"    return;");
                                         }
@@ -1170,12 +1195,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return default!;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}];");
                                         }
                                     }
@@ -1191,12 +1216,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}] = value;");
                                             writer.WriteLine($"    return;");
                                         }
@@ -1219,12 +1244,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} += value;");
                                             writer.WriteLine($"    return;");
                                         }
@@ -1241,12 +1266,12 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"switch (this.__um_flag)");
                                     using (writer.EnterBracketIndentScope('{'))
                                     {
-                                        writer.WriteLine($"case 0u:");
+                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                         writer.WriteLine($"    {ThrowNRE};");
                                         writer.WriteLine($"    return;");
                                         foreach (var variant in data.Variants)
                                         {
-                                            writer.WriteLine($"case {variant.Id}u:");
+                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                             writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} -= value;");
                                             writer.WriteLine($"    return;");
                                         }
@@ -1265,14 +1290,14 @@ partial class TypeUnionGenerator
                             writer.WriteLine($"switch (this.__um_flag)");
                             using (writer.EnterBracketIndentScope('{'))
                             {
-                                writer.WriteLine($"case 0u:");
+                                writer.WriteLine($"case {LiteralFlag(0, data)}:");
                                 writer.WriteLine($"    {ThrowNRE};");
                                 if (member.ReturnsVoid)
                                 {
                                     writer.WriteLine($"    return;");
                                     foreach (var variant in data.Variants)
                                     {
-                                        writer.WriteLine($"case {variant.Id}u:");
+                                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                         writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
                                         writer.WriteLine($"    return;");
                                     }
@@ -1282,7 +1307,7 @@ partial class TypeUnionGenerator
                                     writer.WriteLine($"    return default!;");
                                     foreach (var variant in data.Variants)
                                     {
-                                        writer.WriteLine($"case {variant.Id}u:");
+                                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
                                         writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
                                     }
                                 }
@@ -1363,6 +1388,17 @@ partial class TypeUnionGenerator
             /// Check if the union value is exactly type {{(code ? $"<c>{type}</c>" : type)}}, and return the value if it is.
             /// </summary>
             """;
+    }
+
+    private static string LiteralFlag(uint value, TypeUnionData data)
+    {
+        var suffix = data.Variants.Length switch
+        {
+            <= 255 => "",
+            <= 65535 => "",
+            _ => "u",
+        };
+        return $"{value}{suffix}";
     }
 
 }

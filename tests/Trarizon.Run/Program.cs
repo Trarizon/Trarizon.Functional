@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Trarizon.Library.Functional;
+using Trarizon.Library.Functional.CompilerServices;
 using Trarizon.Library.Functional.Unions;
 
 Console.WriteLine("Hello, World!");
@@ -19,6 +20,7 @@ a.OfType<string>();
 
 new MyUnion().As<IEnumerable<int>>();
 new MyUnion().AsExactly<IEnumerable<char>>();
+var v = MyUnion.Void;
 
 namespace System.Runtime.CompilerServices
 {
@@ -80,7 +82,8 @@ namespace N
     typeof(float),
     typeof(void*), typeof(int*),
     GenerateDangerousMembers = true,
-    AlwaysGenerateSeparateMethodsForRefStruct = true)]
+    AlwaysGenerateSeparateMethodsForRefStruct = true,
+    ShareInterfaces = UnionShareInterfaceOption.Explicit)]
 partial struct MyUnion : IEquatable<MyUnion>
 {
 }

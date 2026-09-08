@@ -11,7 +11,7 @@ record struct TypeUnionParseInfo(
     string TypeName,
     TypeUnionDataOptions Options,
     EquatableImmutableArray<VariantParseInfo> Variants,
-    EquatableImmutableArray<TypeUnionInterfaceParseInfo> SharedInterfaces,
+    EquatableImmutableArray<TypeUnionInterfaceParseInfo>? SharedInterfaces,
     ExceptionInfo? Exception = null
 ) : IParseInfo
 {
@@ -24,7 +24,7 @@ sealed record TypeUnionData(
     string TypeFullName,
     string TypeFullyQName,
     EquatableImmutableArray<VariantData> Variants,
-    EquatableImmutableArray<TypeUnionInterfaceParseInfo> SharedInterfaces,
+    EquatableImmutableArray<TypeUnionInterfaceParseInfo>? SharedInterfaces,
     TypeUnionDataOptions Options
 )
 {
