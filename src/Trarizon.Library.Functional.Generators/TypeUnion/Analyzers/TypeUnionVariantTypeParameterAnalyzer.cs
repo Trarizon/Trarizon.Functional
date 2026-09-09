@@ -43,7 +43,14 @@ internal sealed class TypeUnionVariantTypeParameterAnalyzer : DiagnosticAnalyzer
             {
                 var operation = (IInvocationOperation)context.Operation;
 
-                if (operation.Instance?.Type is not INamedTypeSymbol instanceType)
+                var instanceType = operation switch
+                {
+                    { Instance: { Type: INamedTypeSymbol instType } } => instType,
+                    { Instance: null, TargetMethod.ContainingType: { } staticType } => staticType,
+                    _ => null
+                };
+
+                if (instanceType is null)
                     return;
 
                 if (!instanceType.TryGetAttributeData(typeUnionAttr, out var typeUnionAttrData))

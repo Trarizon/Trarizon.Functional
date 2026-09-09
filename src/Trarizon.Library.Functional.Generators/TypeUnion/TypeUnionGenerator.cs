@@ -39,6 +39,35 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
                 return false;
             }
         }
+
+        public bool GenericMath
+        {
+            get
+            {
+                if (TargetFramework is null)
+                    return false;
+                if (TargetFramework.StartsWith("net"))
+                {
+                    if (Version.TryParse(TargetFramework[3..], out var v))
+                        return v.Major >= 7;
+                }
+                return false;
+            }
+        }
+
+        public bool CollectionExpression
+        {
+            get
+            {
+                if (TargetFramework is null)
+                    return false;
+#if ROSLYN_4_9_2_OR_GREATER
+                if (LanguageVersion > LanguageVersion.CSharp12)
+                    return true;
+#endif
+                return false;
+            }
+        }
     }
 
     public void Initialize(IncrementalGeneratorInitializationContext context)

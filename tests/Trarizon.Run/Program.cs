@@ -22,6 +22,9 @@ new MyUnion().As<IEnumerable<int>>();
 new MyUnion().AsExactly<IEnumerable<char>>();
 var v = MyUnion.Void;
 
+
+// MyUnion.TryCreate(JsonDocument.Parse(""), out var u);
+
 namespace System.Runtime.CompilerServices
 {
     public interface IUnion
@@ -79,11 +82,12 @@ namespace N
     typeof(int),
     typeof(JsonElement),
     typeof(ReadOnlySpan<char>),
+    typeof(IDisposable),
     typeof(float),
     typeof(void*), typeof(int*),
     GenerateDangerousMembers = true,
     AlwaysGenerateSeparateMethodsForRefStruct = true,
     ShareInterfaces = UnionShareInterfaceOption.Explicit)]
-partial struct MyUnion : IEquatable<MyUnion>
+partial struct MyUnion
 {
 }

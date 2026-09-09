@@ -39,7 +39,7 @@ partial class TypeUnionGenerator
         {
             var interfaces = new List<string>
             {
-                $"global::Trarizon.Library.Functional.Unions.ITypeUnion"
+                $"global::Trarizon.Library.Functional.CompilerServices.IDefaultTypeUnion<{data.TypeFullyQName}>"
             };
             if (hasIUnion)
                 interfaces.Add($"global::System.Runtime.CompilerServices.IUnion");
@@ -118,6 +118,14 @@ partial class TypeUnionGenerator
                     writer.WriteLine("#endregion");
                     writer.WriteLine();
                 }
+
+                writer.WriteLine("#region ITypeUnion");
+                writer.WriteLine();
+                EmitITypeUnionMetadataMembers(writer, data, env);
+                writer.WriteLine();
+                writer.WriteLine("#endregion");
+                writer.WriteLine();
+
 
                 EmitUnmanagedStructType(writer, data);
 
@@ -838,6 +846,112 @@ partial class TypeUnionGenerator
                     return false;
                 }
                 """);
+        }
+    }
+
+    // emit: Metadata
+
+    private void EmitITypeUnionMetadataMembers(IndentedTextWriter writer, TypeUnionData data, Env env)
+    {
+        bool colExpr = env.CollectionExpression;
+        var TVariantAllowsRefStruct = env.AllowsRefStruct ? " where TVariant : allows ref struct" : "";
+        var TAllowsRefStruct = env.AllowsRefStruct ? " where T : allows ref struct" : "";
+
+        // VariantTypes
+
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteMultipleLines($$"""
+                private static class __ut_MetadataProvider
+                {
+                    public static readonly Type[] VariantTypes = new global::System.Type[] { {{data.Variants.Select(x => $"typeof({x.TypeData.FullyQName})").JoinToString(", ")}} };
+                }
+                """);
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"static global::System.ReadOnlySpan<global::System.Type> global::Trarizon.Library.Functional.Unions.ITypeUnion.VariantTypes {{ get {{ return __ut_MetadataProvider.VariantTypes;  }} }}");
+
+        writer.WriteLine();
+
+        // GetFlagValue
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"static uint global::Trarizon.Library.Functional.Unions.ITypeUnion.GetFlagValue<TVariant>()");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
+            {
+                writer.WriteMultipleLines($$"""
+                    if (typeof(TVariant) == typeof({{variant.TypeData.FullyQName}}))
+                        return {{LiteralFlag(variant.Id, data)}};
+                    """);
+            }
+            writer.WriteLine($"return 0u;");
+        }
+
+        writer.WriteLine();
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"static uint global::Trarizon.Library.Functional.Unions.ITypeUnion.GetFlagValue(global::System.Type type)");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants)
+            {
+                writer.WriteMultipleLines($$"""
+                    if (type == typeof({{variant.TypeData.FullyQName}}))
+                        return {{variant.Id}}u;
+                    """);
+            }
+            writer.WriteLine($"return 0u;");
+        }
+
+        writer.WriteLine();
+
+        // TryCreate
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
+            {
+                writer.WriteMultipleLines($$"""
+                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
+                    {
+                        result = global::System.Runtime.CompilerServices.Unsafe.As<T, {{data.TypeFullyQName}}>(ref value);
+                        return true;
+                    }
+                    """);
+            }
+            writer.WriteLine($"result = default;");
+            writer.WriteLine($"return false;");
+        }
+
+        writer.WriteLine();
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"static bool global::Trarizon.Library.Functional.Unions.ITypeUnion<{data.TypeFullyQName}>.TryCreate<T>(uint flagValue, T value, out {data.TypeFullyQName} result)");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
+            {
+                writer.WriteMultipleLines($$"""
+                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
+                    {
+                        if (flagValue == {{variant.Id}}u)
+                        {
+                            result = global::System.Runtime.CompilerServices.Unsafe.As<T, {{data.TypeFullyQName}}>(ref value);
+                            return true;
+                        }
+                    }
+                    """);
+            }
+            writer.WriteLine($"result = default;");
+            writer.WriteLine($"return false;");
         }
     }
 

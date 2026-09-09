@@ -81,13 +81,15 @@ var none = Optional.None.Build<int>(); // 返回Optional<int>
 
 使用`Trarizon.Library.Functional.Unions.TypeUnionAttribute`标记类型以生成type union。
 
-- 生成的类型的排列固定为`LayoutKind.Auto`
-- 生成的类型实现`Trarizon.Library.Functional.Unions.ITypeUnion`接口
-- 生成的引用类型字段重叠、非托管类型字段重叠、托管类型字段平铺
 - 支持`ref struct`，含有`ref struct`时union类型会标记为`ref struct`。
 - 支持指针类型
 - 支持`void`但没什么用
 - 支持共享接口
+- `ITypeUnion`提供静态成员提供元数据
+
+- 生成的类型的排列固定为`LayoutKind.Auto`
+- 生成的类型实现`Trarizon.Library.Functional.Unions.ITypeUnion`接口
+- 生成的引用类型字段重叠、非托管类型字段重叠、托管类型字段平铺
 
 ``` csharp
 [TypeUnion(
@@ -106,7 +108,7 @@ partial struct MyUnion;
 
 ``` csharp
 [StructLayout(LayoutKind.Auto)]
-ref partial struct MyUnion 
+ref partial struct MyUnion : ITypeUnion<MyUnion>
 {
     readonly uint _flag;
     readonly object _obj;
@@ -164,6 +166,9 @@ ref partial struct MyUnion
         => /* ... */;
 
     public bool IsExactly<T>(out T value) where T : allows ref struct
+        => /* ... */;
+
+    public static bool TryCreate<T>(T value, out MyUnion union) where T : allows ref struct
         => /* ... */;
 
     [StructLayout(LayoutKind.Explicit)]
@@ -519,6 +524,16 @@ ref partial struct MyUnion
 
 </details>
 
+### ITypeUnion
+
+所有生成的union类型都实现了`ITypeUnion`接口。
+
+`ITypeUnion` <- `ITypeUnion<TSelf>` <- `IDefaultTypeUnion<TSelf>` <- `MyUnion`
+
+`ITypeUnion`与`ITypeUnion<TSelf>`定义了union的通用方法，以及提供部分元信息的静态方法。
+
+`IDefaultTypeUnion`仅用于生成器简化生成代码，其假设继承的类型均为生成器的union。用户不应该显式使用该接口。
+
 ### 选项
 
 - `GenerateDangerousMembers`：默认值为`false`。生成一系列DangerousGetValueRef私有方法，提供根据类型对字段的直接访问。
@@ -542,6 +557,7 @@ ref partial struct MyUnion
 |`IsExactly<T>()`|检查实例是否为指定类型，不检测其基类与接口|
 |`Is<T>(out T value)`|检查实例是否为指定类型，并返回值，会检测其基类与接口|
 |`IsExactly<T>(out T value)`|检查实例是否为指定类型，并返回值，不检测其基类与接口|
+|`TryCreate<T>(T value)`|尝试以T作为variant类型创建union类型的实例|
 |`DangerousGetValueRef<T>()`|开启`GenerateDangerousMembers`后生成，不进行类型检查直接获取指定类型的值字段的引用|
 
 - 对于低版本(.NET 9.0以下)不支持`allows ref struct`方法时，会生成单独的`As`与`Is`方法用于检测该类型。
