@@ -6,5 +6,6 @@
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
 TRAFNL0001 | Trarizon.Library.Functional | Warning | MonadCastAnalyzer
+TRAFNL0002 | Trarizon.Library.Functional | Error | GeneratorUseOnlyAnalyzer
 TRAFNL0101 | Trarizon.Library.Functional.Unions | Warning | TypeUnionVariantTypeParameterAnalyzer
-TRAFNL0102 | Trarizon.Library.Functional | Error | GeneratorUseOnlyAnalyzer
+TRAFNL0103 | Trarizon.Library.Functional.Unions | Error | ITypeUnionImplementationAnalyzer

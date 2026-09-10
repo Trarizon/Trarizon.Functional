@@ -70,7 +70,7 @@ internal sealed class TypeUnionVariantTypeParameterAnalyzer : DiagnosticAnalyzer
                     if (typeArg.TypeKind == TypeKind.TypeParameter)
                         continue;
 
-                    var allowsBaseTypes = variantAttrData.GetNamedArgument("AllowsBaseTypes").CastValueOrDefault<bool>();
+                    var allowsBaseTypes = variantAttrData.GetConstructorArgument(0).CastValueOrDefault<bool>();
 
                     bool isValid;
                     if (allowsBaseTypes)

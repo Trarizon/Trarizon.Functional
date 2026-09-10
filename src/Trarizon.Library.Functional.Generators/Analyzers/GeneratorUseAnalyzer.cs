@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.Operations;
 using System.Collections.Immutable;
 using Trarizon.Library.Roslyn;
 
-namespace Trarizon.Library.Functional.Generators.TypeUnion.Analyzers;
+namespace Trarizon.Library.Functional.Generators.Analyzers;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class GeneratorUseAnalyzer : DiagnosticAnalyzer
@@ -13,7 +13,7 @@ internal sealed class GeneratorUseAnalyzer : DiagnosticAnalyzer
         ImmutableArray.Create(GeneratorUseOnlyAccess);
 
     private static readonly DiagnosticDescriptor GeneratorUseOnlyAccess = new(
-        "TRAFNL0102",
+        "TRAFNL0002",
         "Generator-use-only member accessed from non-generated code",
         "The '{0}' is marked as generator-use-only and should not be accessed from non-generated code",
         "Trarizon.Library.Functional",

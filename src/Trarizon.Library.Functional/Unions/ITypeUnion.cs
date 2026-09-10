@@ -120,6 +120,8 @@ public interface ITypeUnion<TSelf> : ITypeUnion
     where TSelf : ITypeUnion<TSelf>
 #endif
 {
+#if NET7_0_OR_GREATER
+
     /// <summary>
     /// Try to create a type union from a value of type T.<br/>
     /// This returns false if T is not exactly one of the variant types.
@@ -139,4 +141,16 @@ public interface ITypeUnion<TSelf> : ITypeUnion
         where T : allows ref struct
 #endif
     ;
+
+    static bool ITypeUnion.IsFlagDefined(uint flagValue)
+        => flagValue >= 1 && flagValue <= TSelf.VariantTypes.Length;
+
+    static Type? ITypeUnion.GetFlagType(uint flagValue)
+    {
+        if (!TSelf.IsFlagDefined(flagValue))
+            return null;
+        return TSelf.VariantTypes[unchecked((int)flagValue - 1)];
+    }
+
+#endif
 }

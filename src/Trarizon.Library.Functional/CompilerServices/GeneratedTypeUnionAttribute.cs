@@ -6,7 +6,6 @@ namespace Trarizon.Library.Functional.CompilerServices;
 /// Marked on type parameters of As&lt;T>, Is&lt;T>, etc. methods of generated union
 /// </summary>
 [AttributeUsage(AttributeTargets.GenericParameter)]
-public sealed class GeneratedTypeUnionVariantTypeParameterAttribute : Attribute
-{
-    public bool AllowsBaseTypes { get; set; } = false;
-}
+public sealed class GeneratedTypeUnionVariantTypeParameterAttribute(
+    bool allowsBaseTypes
+) : Attribute;

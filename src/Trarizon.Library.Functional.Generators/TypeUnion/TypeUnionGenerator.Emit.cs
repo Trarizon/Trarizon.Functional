@@ -39,7 +39,7 @@ partial class TypeUnionGenerator
         {
             var interfaces = new List<string>
             {
-                $"global::Trarizon.Library.Functional.CompilerServices.IDefaultTypeUnion<{data.TypeFullyQName}>"
+                $"global::Trarizon.Library.Functional.Unions.ITypeUnion<{data.TypeFullyQName}>"
             };
             if (hasIUnion)
                 interfaces.Add($"global::System.Runtime.CompilerServices.IUnion");
@@ -242,7 +242,7 @@ partial class TypeUnionGenerator
         writer.WriteMultipleLines($$"""
             {{Utils.GeneratedCodeAttributeList}}
             [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-            public readonly T Cast<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(AllowsBaseTypes = true)] T>(){{@allows}}
+            public readonly T Cast<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){{@allows}}
             {
                 if (!this.Is<T>(out var value))
                     global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowInvalidCastException($"Unable to cast {{data.TypeFullName}} to typeof(T).Name");
@@ -259,7 +259,7 @@ partial class TypeUnionGenerator
         writer.WriteMultipleLines($$"""
             {{Utils.GeneratedCodeAttributeList}}
             [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-            public readonly T? As<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(AllowsBaseTypes = true)] T>(){{@allows}}
+            public readonly T? As<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){{@allows}}
             {
                 this.Is<T>(out var value);
                 return value;
@@ -275,7 +275,7 @@ partial class TypeUnionGenerator
             {{DocCommentAsExactly("<typeparamref name=\"T\"/>", code: false)}}
             {{Utils.GeneratedCodeAttributeList}}
             [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-            public readonly T? AsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute] T>(){{@allows}}
+            public readonly T? AsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){{@allows}}
             {
                 this.IsExactly<T>(out var value);
                 return value;
@@ -411,7 +411,7 @@ partial class TypeUnionGenerator
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(AllowsBaseTypes = true)] T>(){@allows}");
+        writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
             writer.WriteLine("switch (this.__um_flag)");
@@ -468,7 +468,7 @@ partial class TypeUnionGenerator
 
         writer.WriteMultipleLines(DocCommentIsExactly(@"<typeparamref name=""T""/>", code: false));
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute] T>(){@allows}");
+        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
             foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
@@ -619,7 +619,7 @@ partial class TypeUnionGenerator
         var @maybeNullWhen = env.MaybeNull ? "[global::System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] " : "";
 
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(AllowsBaseTypes = true)] T>({maybeNullWhen}out T value){@allows}");
+        writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>({maybeNullWhen}out T value){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
             writer.WriteLine("switch (this.__um_flag)");
@@ -662,7 +662,7 @@ partial class TypeUnionGenerator
 
         writer.WriteMultipleLines(DocCommentIsExactly(@"<typeparamref name=""T""/>", code: false));
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute] T>({maybeNullWhen}out T value){@allows}");
+        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>({maybeNullWhen}out T value){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
             foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
@@ -913,7 +913,7 @@ partial class TypeUnionGenerator
 
         writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
+        writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
         using (writer.EnterBracketIndentScope('{'))
         {
             foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
