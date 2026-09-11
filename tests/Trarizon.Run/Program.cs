@@ -25,6 +25,17 @@ new MyUnion().AsExactly<IEnumerable<char>>();
 var v = MyUnion.Void;
 
 
+if (U.TryCreate("114514", out var u))
+{
+    if (u.Is<ulong>(out var i))
+    {
+        System.Console.WriteLine(i);
+    }
+}
+
+[TypeUnion(typeof(ulong), typeof(string), typeof(DateTime), typeof(ReadOnlySpan<char>))]
+partial struct U;
+
 // MyUnion.TryCreate(JsonDocument.Parse(""), out var u);
 
 namespace System.Runtime.CompilerServices

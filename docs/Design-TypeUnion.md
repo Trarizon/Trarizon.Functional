@@ -58,6 +58,7 @@ union类型标记为`StructLayout(LayoutKind.Auto)`以支持CLR重排字段
 `IsExactly<T>()`|判断union是否为指定变体(判断_flag值)，若是则返回true
 `Is<T>(out T)`|提供C#`is`语义的判断，若为指定变体则返回true并赋值给out参数
 `IsExactly<T>(out T)`|判断union是否为指定变体(判断_flag值)，若是则返回true并赋值给out参数
+`Match()`|传入委托根据不同变体将union转换为指定类型(含`void`)
 
 对于泛型成员如`Is<T>()`，由于有些类型无法作为泛型参数传入，因此使用其他方式提供访问，以`Is<T>()`为例：
 

@@ -99,6 +99,20 @@ partial class TypeUnionGenerator
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
 
+                writer.WriteLine("#region Match");
+                writer.WriteLine();
+                EmitMatchMethods(writer, data, env);
+                writer.WriteLine();
+                writer.WriteLine("#endregion");
+                writer.WriteLine();
+
+                writer.WriteLine("#region TryCreate");
+                writer.WriteLine();
+                EmitTryCreateMethod(writer, data, env);
+                writer.WriteLine();
+                writer.WriteLine("#endregion");
+                writer.WriteLine();
+
                 writer.WriteLine("#region Equality");
                 writer.WriteLine();
                 EmitEqualityMethods(writer, data, env);
@@ -257,6 +271,7 @@ partial class TypeUnionGenerator
     {
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
         writer.WriteMultipleLines($$"""
+            /// <inheritdoc />
             {{Utils.GeneratedCodeAttributeList}}
             [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
             public readonly T? As<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){{@allows}}
@@ -272,7 +287,7 @@ partial class TypeUnionGenerator
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
         writer.WriteMultipleLines($$"""
-            {{DocCommentAsExactly("<typeparamref name=\"T\"/>", code: false)}}
+            /// <inheritdoc />
             {{Utils.GeneratedCodeAttributeList}}
             [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
             public readonly T? AsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){{@allows}}
@@ -410,6 +425,7 @@ partial class TypeUnionGenerator
     {
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
+        writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
@@ -466,7 +482,7 @@ partial class TypeUnionGenerator
     {
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
-        writer.WriteMultipleLines(DocCommentIsExactly(@"<typeparamref name=""T""/>", code: false));
+        writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
@@ -618,6 +634,7 @@ partial class TypeUnionGenerator
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
         var @maybeNullWhen = env.MaybeNull ? "[global::System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] " : "";
 
+        writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>({maybeNullWhen}out T value){@allows}");
         using (writer.EnterBracketIndentScope('{'))
@@ -660,7 +677,7 @@ partial class TypeUnionGenerator
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
         var @maybeNullWhen = env.MaybeNull ? "[global::System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] " : "";
 
-        writer.WriteMultipleLines(DocCommentIsExactly(@"<typeparamref name=""T""/>", code: false));
+        writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>({maybeNullWhen}out T value){@allows}");
         using (writer.EnterBracketIndentScope('{'))
@@ -855,13 +872,96 @@ partial class TypeUnionGenerator
         }
     }
 
+    // emit: Match
+
+    private void EmitMatchMethods(IndentedTextWriter writer, TypeUnionData data, Env env)
+    {
+        if (!data.Variants.All(x => x.TypeData.TypeKind.IsGenericable || x.TypeData.TypeKind is VariantTypeKind.Void))
+            return;
+
+        var @allows = env.AllowsRefStruct ? " where TResult : allows ref struct" : "";
+
+        // Return void
+
+        var parameters = data.Variants
+            .Select(x => $"global::System.Action{(x.TypeData.TypeKind is VariantTypeKind.Void ? "" : $"<{x.TypeData.FullyQName}>")}? handler{x.Id} = null")
+            .JoinToString(", ");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"public readonly void Match({parameters})");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            writer.WriteLine("switch (__um_flag)");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                foreach (var variant in data.Variants)
+                {
+                    var arg = variant.TypeData.TypeKind is VariantTypeKind.Void ? "" : ExprVariantToT(variant, variant.TypeData.FullyQName);
+                    writer.WriteMultipleLines($$"""
+                        case {{LiteralFlag(variant.Id, data)}}: handler{{variant.Id}}?.Invoke({{arg}}); break;
+                        """);
+                }
+            }
+        }
+
+        // Return T
+
+        var parametersFunc = data.Variants
+            .Select(x => $"global::System.Func<{(x.TypeData.TypeKind is VariantTypeKind.Void ? "" : $"{x.TypeData.FullyQName}, ")}TResult> handler{x.Id}")
+            .JoinToString(", ");
+
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"public readonly TResult Match<TResult>({parametersFunc}){@allows}");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            writer.WriteLine("switch (__um_flag)");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                foreach (var variant in data.Variants)
+                {
+                    var arg = variant.TypeData.TypeKind is VariantTypeKind.Void ? "" : ExprVariantToT(variant, variant.TypeData.FullyQName);
+                    writer.WriteMultipleLines($$"""
+                        case {{LiteralFlag(variant.Id, data)}}: return handler{{variant.Id}}.Invoke({{arg}});
+                        """);
+                }
+            }
+            const string ThrowUUCE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowUnknownUnionCaseException()";
+            writer.WriteLine($"{ThrowUUCE};");
+            writer.WriteLine("return default(TResult)!;");
+        }
+    }
+
+    // emit: TryCreate
+
+    private void EmitTryCreateMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
+    {
+        var TAllowsRefStruct = env.AllowsRefStruct ? " where T : allows ref struct" : "";
+
+        writer.WriteLine("/// <inheritdoc />");
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
+            {
+                writer.WriteMultipleLines($$"""
+                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
+                    {
+                        result = new {{data.TypeFullyQName}}(global::System.Runtime.CompilerServices.Unsafe.As<T, {{variant.TypeData.FullyQName}}>(ref value));
+                        return true;
+                    }
+                    """);
+            }
+            writer.WriteLine($"result = default;");
+            writer.WriteLine($"return false;");
+        }
+    }
+
     // emit: Metadata
 
     private void EmitITypeUnionMetadataMembers(IndentedTextWriter writer, TypeUnionData data, Env env)
     {
         bool colExpr = env.CollectionExpression;
         var TVariantAllowsRefStruct = env.AllowsRefStruct ? " where TVariant : allows ref struct" : "";
-        var TAllowsRefStruct = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
         // VariantTypes
 
@@ -916,27 +1016,6 @@ partial class TypeUnionGenerator
         writer.WriteLine();
 
         // TryCreate
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                writer.WriteMultipleLines($$"""
-                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                    {
-                        result = global::System.Runtime.CompilerServices.Unsafe.As<T, {{data.TypeFullyQName}}>(ref value);
-                        return true;
-                    }
-                    """);
-            }
-            writer.WriteLine($"result = default;");
-            writer.WriteLine($"return false;");
-        }
-
-        writer.WriteLine();
 
         writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
