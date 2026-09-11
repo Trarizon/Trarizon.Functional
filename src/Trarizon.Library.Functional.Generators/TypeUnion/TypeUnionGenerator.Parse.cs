@@ -44,16 +44,22 @@ partial class TypeUnionGenerator
         if (variantTypes.Length == 0)
             return null;
 
-        var variantSet = new HashSet<ITypeSymbol>(variantTypes, SymbolEqualityComparer.Default);
+        var variantSet = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
         int unmanagedIdx = 0;
         int managedIdx = 0;
 
         var readableNameMap = new Dictionary<string, int>();
 
-        var variantDatas = ImmutableArray.CreateBuilder<VariantParseInfo>(variantSet.Count);
-        foreach (var (index, type) in variantSet.Select((x, i) => (i, x)))
+        var variantDatas = ImmutableArray.CreateBuilder<VariantParseInfo>(variantTypes.Length);
+        var index = 0;
+        for (int i = 0; i < variantTypes.Length; i++)
         {
+            if (!variantSet.Add(variantTypes[i]))
+                continue;
+
+            var type = variantTypes[i];
             uint id = (uint)index + 1;
+            index++;
 
             uint fieldId;
             if (type.IsReferenceType)

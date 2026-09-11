@@ -20,7 +20,7 @@ public class TypeUnionAttribute(params Type[] types) : Attribute
     public UnionShareInterfaceOption ShareInterfaces { get; set; }
 }
 
-internal sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))
+public sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))
 #if NET9_0_OR_GREATER
     where T1 : allows ref struct
     where T2 : allows ref struct

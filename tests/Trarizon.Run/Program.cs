@@ -19,6 +19,7 @@ IEnumerable<int> a = [];
 
 a.OfType<string>();
 
+
 new MyUnion().As<IEnumerable<int>>();
 new MyUnion().AsExactly<IEnumerable<char>>();
 var v = MyUnion.Void;
@@ -67,7 +68,7 @@ namespace N
             IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
         }
 
-        ref struct D : IEquatable<D>
+        public ref struct D : IEquatable<D>
         {
             public bool Equals(D other) => throw new NotImplementedException();
 
