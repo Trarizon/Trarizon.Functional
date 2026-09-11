@@ -355,7 +355,7 @@ partial class TypeUnionGenerator
                 public unsafe readonly void{{stars}} AsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
                 {
                     if (this.__um_flag == {{LiteralFlag(group.Id, data)}})
-                        return {{ExprVariantToT(group, "void*")}};
+                        return {{ExprVariantToT(group, $"void{stars}")}};
                     return default(void{{stars}});
                 }
                 """);
@@ -785,21 +785,27 @@ partial class TypeUnionGenerator
             }
         }
 
-        // // void*
+        // void*
 
-        // foreach (var group in data.Variants.Where(x => x.TypeData.IsVoidPointer))
-        // {
-        //     var stars = new string('*', group.TypeData.PointerLevel);
-        //     writer.WriteLine();
-        //     writer.WriteMultipleLines(DocCommentIsExactly($"void{stars}"));
-        //     writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        //     writer.WriteMultipleLines($$"""
-        //         public unsafe readonly bool IsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
-        //         {
-        //             return this.__um_flag == {{group.Id}}u;
-        //         }
-        //         """);
-        // }
+        foreach (var group in data.Variants.Where(x => x.TypeData.IsVoidPointer))
+        {
+            var stars = new string('*', group.TypeData.PointerLevel);
+            writer.WriteLine();
+            writer.WriteMultipleLines(DocCommentIsExactly($"void{stars}"));
+            writer.WriteLine(Utils.GeneratedCodeAttributeList);
+            writer.WriteMultipleLines($$"""
+                public unsafe readonly bool IsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}(out void{{stars}} value)
+                {
+                    if (this.__um_flag == {{LiteralFlag(group.Id, data)}})
+                    {
+                        value = {{ExprVariantToT(group, $"void{stars}")}};
+                        return true;
+                    }
+                    value = default(void{{stars}});
+                    return false;
+                }
+                """);
+        }
 
         // ref struct*
 

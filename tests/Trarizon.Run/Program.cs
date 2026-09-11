@@ -87,9 +87,14 @@ namespace N
     typeof(IDisposable),
     typeof(float),
     typeof(void*), typeof(int*),
+    typeof(void**), typeof(int**),
     GenerateDangerousMembers = true,
     AlwaysGenerateSeparateMethodsForRefStruct = true,
     ShareInterfaces = UnionShareInterfaceOption.Explicit)]
 partial struct MyUnion
 {
 }
+
+// [TypeUnion(typeof(T))]
+// [TypeUnion<T, int>]
+// partial struct MyUnion<T>;

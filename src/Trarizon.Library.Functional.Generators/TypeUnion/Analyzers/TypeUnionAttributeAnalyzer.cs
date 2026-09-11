@@ -9,8 +9,12 @@ namespace Trarizon.Library.Functional.Generators.TypeUnion.Analyzers;
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class TypeUnionAttributeAnalyzer : DiagnosticAnalyzer
 {
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } =
-        ImmutableArray.Create(VariantTypeCannotBeSelf, DuplicateTypeUnionAttribute, DuplicateVariantType);
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [
+        VariantTypeCannotBeSelf,
+        DuplicateTypeUnionAttribute,
+        DuplicateVariantType,
+        OpenGenericVariantType
+    ];
 
     private static readonly DiagnosticDescriptor VariantTypeCannotBeSelf = new(
         "TRAFNL0104",
@@ -34,6 +38,14 @@ internal sealed class TypeUnionAttributeAnalyzer : DiagnosticAnalyzer
         "The variant type '{0}' is duplicated in the TypeUnionAttribute. Each variant type should appear only once.",
         "Trarizon.Library.Functional.Unions",
         DiagnosticSeverity.Info,
+        true);
+
+    private static readonly DiagnosticDescriptor OpenGenericVariantType = new(
+        "TRAFNL0107",
+        "Open generic variant type",
+        "The variant type '{0}' is an open generic type. Type union variant types must be closed (constructed) types.",
+        "Trarizon.Library.Functional.Unions",
+        DiagnosticSeverity.Error,
         true);
 
     public override void Initialize(AnalysisContext context)
@@ -70,6 +82,7 @@ internal sealed class TypeUnionAttributeAnalyzer : DiagnosticAnalyzer
                 var variantTypes = attrData.GetTypeUnionVariantTypes();
                 Action_CheckVariantTypeBeingSelf(context, typeSymbol, attrData, variantTypes.AsSpan());
                 Action_CheckDuplicateVariantTypes(context, typeSymbol, attrData, variantTypes.AsSpan());
+                Action_CheckOpenGenericVariantTypes(context, typeSymbol, attrData, variantTypes.AsSpan());
             }, SymbolKind.NamedType);
         });
     }
@@ -139,6 +152,20 @@ internal sealed class TypeUnionAttributeAnalyzer : DiagnosticAnalyzer
                     attr.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? Location.None,
                     variantType.ToDisplayString()));
                 continue;
+            }
+        }
+    }
+
+    private void Action_CheckOpenGenericVariantTypes(SymbolAnalysisContext context, INamedTypeSymbol typeSymbol, AttributeData attr, ReadOnlySpan<ITypeSymbol> variantTypes)
+    {
+        foreach (var variantType in variantTypes)
+        {
+            if (variantType is INamedTypeSymbol namedType && namedType.IsUnboundGenericType)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    OpenGenericVariantType,
+                    attr.ApplicationSyntaxReference?.GetSyntax().GetLocation() ?? Location.None,
+                    variantType.ToDisplayString()));
             }
         }
     }

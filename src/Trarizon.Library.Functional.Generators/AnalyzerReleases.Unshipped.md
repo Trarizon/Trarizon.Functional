@@ -12,3 +12,4 @@ TRAFNL0103 | Trarizon.Library.Functional.Unions | Error | ITypeUnionImplementati
 TRAFNL0104 | Trarizon.Library.Functional.Unions | Error | TypeUnionAttributeAnalyzer
 TRAFNL0105 | Trarizon.Library.Functional.Unions | Error | TypeUnionAttributeAnalyzer
 TRAFNL0106 | Trarizon.Library.Functional.Unions | Info | TypeUnionAttributeAnalyzer
+TRAFNL0107 | Trarizon.Library.Functional.Unions | Error | TypeUnionAttributeAnalyzer
