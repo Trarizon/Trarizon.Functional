@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 
 namespace Trarizon.Library.Functional;
 
@@ -39,5 +40,5 @@ public static partial class ResultExtensions
 #endif
 
     [DoesNotReturn]
-    private static void ThrowException(Exception exception) => throw exception;
+    private static void ThrowException(Exception exception) => ExceptionDispatchInfo.Throw(exception);
 }
