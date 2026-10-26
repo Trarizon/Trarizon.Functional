@@ -40,10 +40,16 @@ public static partial class RefResult
         => ref result._error;
 
     public static Result<T, TError> AsDeref<T, TError>(this RefResult<T, TError> self) => self;
+    public static Result<T, TError> AsDeref<T, TError>(this Result<T, TError> self) => self;
     public static RefResult<T, TError> AsRef<T, TError>(this Result<T, TError> self) => self;
+    public static RefResult<T, TError> AsRef<T, TError>(this RefResult<T, TError> self) => self;
+    public static Result.SuccessBuilder<T> AsDeref<T>(this SuccessBuilder<T> self) => self;
+    public static Result.SuccessBuilder<T> AsDeref<T>(this Result.SuccessBuilder<T> self) => self;
+    public static Result.FailureBuilder<TError> AsDeref<TError>(this FailureBuilder<TError> self) => self;
+    public static Result.FailureBuilder<TError> AsDeref<TError>(this Result.FailureBuilder<TError> self) => self;
 
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public readonly ref struct SuccessBuilder<T> where T : allows ref struct
+    public readonly ref partial struct SuccessBuilder<T> where T : allows ref struct
     {
         internal readonly T _value;
         internal SuccessBuilder(T value) => _value = value;
@@ -61,7 +67,7 @@ public static partial class RefResult
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public readonly ref struct FailureBuilder<TError> where TError : allows ref struct
+    public readonly ref partial struct FailureBuilder<TError> where TError : allows ref struct
     {
         internal readonly TError _error;
         internal FailureBuilder(TError error) => _error = error;
@@ -94,7 +100,8 @@ partial class Result
     }
 }
 
-public readonly ref struct RefResult<T, TError>
+public readonly ref partial struct RefResult<T, TError>
+    : IResult<T, TError, RefResult<T, TError>>
     where T : allows ref struct where TError : allows ref struct
 {
     internal readonly bool _success;
@@ -196,6 +203,10 @@ public readonly ref struct RefResult<T, TError>
     public override string ToString() => throw new NotSupportedException();
 
 #pragma warning restore CS0809
+
+    RefResult<T, TError> IResultFactory<RefResult<T, TError>, T, TError>.Success(T value) => new(value);
+    RefResult<T, TError> IResultFactory<RefResult<T, TError>, T, TError>.Failure(TError error) => new(error);
+    bool IOptional<T>.HasValue => _success;
 }
 
 partial struct Result<T, TError>

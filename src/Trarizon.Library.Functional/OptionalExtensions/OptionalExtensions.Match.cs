@@ -26,6 +26,11 @@ public static partial class OptionalExtensions
         if (!self.HasValue) selector();
     }
 
+    public static void MatchNone(this Optional.NoneBuilder self, Action selector)
+    {
+        if (!self.HasValue) selector();
+    }
+
 #if REF_MONAD
 
     public static TResult Match<T, TResult>(this RefOptional<T> self, Func<T, TResult> selector, Func<TResult> noValueSelector)

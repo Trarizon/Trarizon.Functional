@@ -45,7 +45,7 @@ public static partial class Result
         => ref result._error;
 
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public readonly partial struct SuccessBuilder<T>
+    public readonly partial struct SuccessBuilder<T> : IOptional<T>
     {
         internal readonly T _value;
         internal SuccessBuilder(T value) => _value = value;
@@ -56,10 +56,12 @@ public static partial class Result
         public T Value => _value;
         public string ToString(bool includeVariantInfo) => Build<object>().ToString(includeVariantInfo);
         public override string ToString() => Build<object>().ToString();
+
+        bool IOptional<T>.HasValue => true;
     }
 
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public readonly partial struct FailureBuilder<TError>
+    public readonly partial struct FailureBuilder<TError> : IResultErrorVariant<TError>
     {
         internal readonly TError _error;
         internal FailureBuilder(TError error) => _error = error;
@@ -77,7 +79,10 @@ public static partial class Result
 /// Monad Result
 /// </summary>
 public readonly partial struct Result<T, TError>
-    : ITaggedUnion
+    : ITaggedUnion, IResult<T, TError>
+#if NET7_0_OR_GREATER
+    , IResult<T, TError, Result<T, TError>>
+#endif
 {
     private readonly bool _success;
     internal readonly T? _value;
@@ -223,6 +228,9 @@ public readonly partial struct Result<T, TError>
     public bool Equals(Result<T, TError> other) => this == other;
     public override bool Equals(object? obj) => obj is Result<T, TError> other && this == other;
     public override int GetHashCode() => IsSuccess ? _value.GetHashCode() : _error.GetHashCode();
+
+    Result<T, TError> IResultFactory<Result<T, TError>, T, TError>.Success(T value) => new(value);
+    Result<T, TError> IResultFactory<Result<T, TError>, T, TError>.Failure(TError error) => new(error);
 }
 
 public sealed partial class ResultException : InvalidOperationException

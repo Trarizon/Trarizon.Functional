@@ -3,8 +3,11 @@
 namespace Trarizon.Library.Functional;
 
 #if UNIT
-
-public readonly struct Unit : IEquatable<Unit>
+public
+#else
+internal
+#endif
+readonly struct Unit : IEquatable<Unit>
 {
     public static Unit Value => default;
 
@@ -14,5 +17,3 @@ public readonly struct Unit : IEquatable<Unit>
     public static bool operator ==(Unit left, Unit right) => true;
     public static bool operator !=(Unit left, Unit right) => false;
 }
-
-#endif

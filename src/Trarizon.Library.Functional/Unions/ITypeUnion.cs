@@ -17,15 +17,6 @@ public interface ITypeUnion
     ;
 
     /// <summary>
-    /// If this union stores the variant of type <typeparamref name="T"/>, it is cast to the type <typeparamref name="T"/>.
-    /// </summary>
-    T? AsExactly<T>()
-#if NET9_0_OR_GREATER
-        where T : allows ref struct
-#endif
-    ;
-
-    /// <summary>
     /// This behaves like the language feature <c>is</c>.<br/>
     /// Check if the value is of the type <typeparamref name="T"/>.
     /// </summary>
@@ -44,25 +35,6 @@ public interface ITypeUnion
     /// <param name="value"></param>
     /// <returns></returns>
     bool Is<T>([MaybeNullWhen(false)] out T value)
-#if NET9_0_OR_GREATER
-        where T : allows ref struct
-#endif
-    ;
-
-    /// <summary>
-    /// Check if this union stores the variant of type <typeparamref name="T"/>.
-    /// </summary>
-    bool IsExactly<T>()
-#if NET9_0_OR_GREATER
-        where T : allows ref struct
-#endif
-    ;
-
-    /// <summary>
-    /// Check if this union stores the variant of type <typeparamref name="T"/>.
-    /// If this union stores the variant of type <typeparamref name="T"/>, it is cast to the type <typeparamref name="T"/>.
-    /// </summary>
-    bool IsExactly<T>([MaybeNullWhen(false)] out T value)
 #if NET9_0_OR_GREATER
         where T : allows ref struct
 #endif

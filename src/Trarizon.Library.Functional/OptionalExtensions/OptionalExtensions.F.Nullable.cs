@@ -11,4 +11,7 @@ public static partial class OptionalExtensions
         => optional.HasValue ? optional.Value : null;
 
 #endif
+
+    // public static Optional<T> ToOptional<T>(T? value) where T : struct
+    //     => Optional.OfNotNull(value);
 }

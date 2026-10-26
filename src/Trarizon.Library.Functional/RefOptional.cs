@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Trarizon.Library.Functional.Unions;
 
 namespace Trarizon.Library.Functional;
 
@@ -11,7 +12,7 @@ public static partial class RefOptional
 
     extension(Optional)
     {
-        public static RefOptional<T> Of<T>(T value) where T : allows ref struct => new(value);
+        public static RefOptional<T> Some<T>(T value) where T : allows ref struct => new(value);
 
         public static RefOptional<T> Create<T>(bool hasValue, T value) where T : allows ref struct
             => hasValue ? new(value) : default;
@@ -24,10 +25,13 @@ public static partial class RefOptional
         => ref optional._value;
 
     public static Optional<T> AsDeref<T>(this RefOptional<T> self) => self;
+    public static Optional<T> AsDeref<T>(this Optional<T> self) => self;
+    public static RefOptional<T> AsRef<T>(this RefOptional<T> self) => self;
     public static RefOptional<T> AsRef<T>(this Optional<T> self) => self;
 }
 
-public readonly ref struct RefOptional<T>
+public readonly ref partial struct RefOptional<T>
+    : IOptional<T, RefOptional<T>>
     where T : allows ref struct
 {
     internal readonly bool _hasValue;
@@ -82,6 +86,9 @@ public readonly ref struct RefOptional<T>
     public override string ToString() => throw new NotSupportedException();
 
 #pragma warning restore CS0809
+
+    RefOptional<T> IOptionalFactory<RefOptional<T>, T>.Some(T value) => new(value);
+    RefOptional<T> IOptionalFactory<RefOptional<T>, T>.None() => default;
 }
 
 partial struct Optional<T>

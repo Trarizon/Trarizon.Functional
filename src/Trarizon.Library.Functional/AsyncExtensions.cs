@@ -1,4 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
+using Trarizon.Library.Functional.Internals;
 
 namespace Trarizon.Library.Functional;
 
@@ -10,13 +11,13 @@ public static class AsyncExtensions
         {
             var task = self.Value;
             if (task.IsCompletedSuccessfully)
-                return Task.FromResult(Optional.Of(task.Result));
+                return Task.FromResult(Optional.Some(task.Result));
             else
                 return Continue(task);
         }
         return Task.FromResult(Optional<T>.None);
 
-        static async Task<Optional<T>> Continue(Task<T> task) => Optional.Of(await task.ConfigureAwait(false));
+        static async Task<Optional<T>> Continue(Task<T> task) => Optional.Some(await task.ConfigureAwait(false));
     }
 
     public static Task<Result<T, TError>> Transpose<T, TError>(this Result<Task<T>, TError> self)
@@ -42,7 +43,7 @@ public static class AsyncExtensions
             return Continue(self.Value);
         return ValueTask.FromResult(Optional<T>.None);
 
-        static async ValueTask<Optional<T>> Continue(ValueTask<T> task) => Optional.Of(await task.ConfigureAwait(false));
+        static async ValueTask<Optional<T>> Continue(ValueTask<T> task) => Optional.Some(await task.ConfigureAwait(false));
     }
 
     public static ValueTask<Result<T, TError>> Transpose<T, TError>(this Result<ValueTask<T>, TError> self)
@@ -117,7 +118,7 @@ public static class AsyncExtensions
 
         public bool IsCompleted => !_awaiter.HasValue || _awaiter.Value.IsCompleted;
 
-        public Optional<T> GetResult() => _awaiter.HasValue ? Optional.Of(_awaiter.Value.GetResult()) : Optional<T>.None;
+        public Optional<T> GetResult() => _awaiter.HasValue ? Optional.Some(_awaiter.Value.GetResult()) : Optional<T>.None;
 
         public void OnCompleted(Action continuation)
         {
@@ -183,7 +184,7 @@ public static class AsyncExtensions
 
         public bool IsCompleted => !_awaiter.HasValue || _awaiter.Value.IsCompleted;
 
-        public Optional<T> GetResult() => _awaiter.HasValue ? Optional.Of(_awaiter.Value.GetResult()) : Optional<T>.None;
+        public Optional<T> GetResult() => _awaiter.HasValue ? Optional.Some(_awaiter.Value.GetResult()) : Optional<T>.None;
 
         public void OnCompleted(Action continuation)
         {

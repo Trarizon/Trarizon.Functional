@@ -11,18 +11,25 @@ using Trarizon.Library.Functional.Unions;
 
 Console.WriteLine("Hello, World!");
 
-Optional.Of(1).Cast<string>();
-Result.Success<int, string>(1).Cast<string, int>();
-Optional.Of(1).OfType<string>();
+RefOptional<int> c = default;
 
-IEnumerable<int> a = [];
+c.Select(x => x.ToString());
+c.Select(x => x.ToString().AsSpan());
 
-a.OfType<string>();
+Func<int, string> func = x => x.ToString();
+Func<int, string, string> func3 = (x, y) => x.ToString();
+c.Select(func);
+c.Select("", func3);
+
+Func<int, ReadOnlySpan<char>> func2 = x => x.ToString().AsSpan();
+Func<int, string, ReadOnlySpan<char>> func4 = (x, y) => x.ToString().AsSpan();
+c.Select(func2);
+c.Select("", func4);
 
 
-new MyUnion().As<IEnumerable<int>>();
-new MyUnion().AsExactly<IEnumerable<char>>();
-var v = MyUnion.Void;
+c.Zip(c.AsDeref(), (x, y) => x + y);
+c.Zip(c, (x, y) => (x, y).ToString().AsSpan());
+
 
 
 if (U.TryCreate("114514", out var u))

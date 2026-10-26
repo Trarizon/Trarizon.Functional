@@ -9,7 +9,7 @@ public static class Optional
 {
     public static NoneBuilder None => default;
 
-    public static Optional<T> Of<T>(T value) => new(value);
+    public static Optional<T> Some<T>(T value) => new(value);
 
     public static Optional<T> Create<T>(bool hasValue, T value)
         => hasValue ? new(value) : default;
@@ -29,13 +29,17 @@ public static class Optional
         public Optional<T> Build<T>() => default;
 
         public bool HasValue => false;
+
         public static bool operator true(NoneBuilder _) => false;
         public static bool operator false(NoneBuilder _) => true;
     }
 }
 
 public readonly partial struct Optional<T>
-    : ITaggedUnion, IOptional<T>
+    : ITaggedUnion, IEquatable<Optional<T>>, IOptional<T>
+#if NET7_0_OR_GREATER
+    , IOptional<T, Optional<T>>
+#endif
 {
     internal readonly bool _hasValue;
     internal readonly T? _value;
@@ -81,6 +85,7 @@ public readonly partial struct Optional<T>
 
     public static implicit operator Optional<T>(Optional.NoneBuilder _) => default;
     public static implicit operator Optional<T>(T value) => new(value);
+    public static explicit operator T(Optional<T> optional) => optional.GetValueOrThrow();
 
     [CastMethod([0], [0])]
     public Optional<TResult> Cast<TResult>() => HasValue ? new((TResult)(object)_value) : default;
@@ -126,6 +131,9 @@ public readonly partial struct Optional<T>
     public bool Equals(Optional<T> other) => this == other;
     public override bool Equals([NotNullWhen(true)] object? obj) => obj is Optional<T> other && this == other;
     public override int GetHashCode() => HasValue ? _value.GetHashCode() : 0;
+
+    Optional<T> IOptionalFactory<Optional<T>, T>.Some(T value) => new(value);
+    Optional<T> IOptionalFactory<Optional<T>, T>.None() => default;
 }
 
 public sealed class OptionalNoValueException : InvalidOperationException

@@ -12,48 +12,24 @@ public static partial class OptionalExtensions
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Optional<TResult> SelectMany<T, TMid, TResult>(this Optional<T> self, Func<T, Optional<TMid>> selector, Func<T, TMid, TResult> resultSelector)
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
+        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Some(resultSelector(self.Value, mid.Value)) : Optional.None;
 
 #if REF_MONAD
-
-    [OverloadResolutionPriority(-1)]
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RefOptional<TResult> SelectMany<T, TMid, TResult>(this Optional<T> self, Func<T, Optional<TMid>> selector, RefFunc<T, TMid, TResult> resultSelector)
-        where TResult : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Optional<TResult> SelectMany<T, TMid, TResult>(this Optional<T> self, Func<T, RefOptional<TMid>> selector, Func<T, TMid, TResult> resultSelector)
         where TMid : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
-
-    [OverloadResolutionPriority(-1)]
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RefOptional<TResult> SelectMany<T, TMid, TResult>(this Optional<T> self, Func<T, RefOptional<TMid>> selector, RefFunc<T, TMid, TResult> resultSelector)
-        where TMid : allows ref struct where TResult : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
+        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Some(resultSelector(self.Value, mid.Value)) : Optional.None;
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Optional<TResult> SelectMany<T, TMid, TResult>(this RefOptional<T> self, Func<T, Optional<TMid>> selector, Func<T, TMid, TResult> resultSelector)
         where T : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
-
-    [OverloadResolutionPriority(-1)]
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RefOptional<TResult> SelectMany<T, TMid, TResult>(this RefOptional<T> self, Func<T, Optional<TMid>> selector, RefFunc<T, TMid, TResult> resultSelector)
-        where T : allows ref struct where TResult : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
+        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Some(resultSelector(self.Value, mid.Value)) : Optional.None;
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     public static Optional<TResult> SelectMany<T, TMid, TResult>(this RefOptional<T> self, Func<T, RefOptional<TMid>> selector, Func<T, TMid, TResult> resultSelector)
         where T : allows ref struct where TMid : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
-
-    [OverloadResolutionPriority(-1)]
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    public static RefOptional<TResult> SelectMany<T, TMid, TResult>(this RefOptional<T> self, Func<T, RefOptional<TMid>> selector, RefFunc<T, TMid, TResult> resultSelector)
-        where T : allows ref struct where TMid : allows ref struct where TResult : allows ref struct
-        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Of(resultSelector(self.Value, mid.Value)) : Optional.None;
+        => self.HasValue && selector(self.Value) is { HasValue: true } mid ? Optional.Some(resultSelector(self.Value, mid.Value)) : Optional.None;
 
 #endif
 
