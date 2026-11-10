@@ -155,7 +155,8 @@ partial class TypeUnionGenerator
             symbol.Name,
             new TypeUnionDataOptions(
                 GenerateDangerousMembers: attr.GetNamedArgument("GenerateDangerousMembers").CastValueOrDefault<bool>(),
-                AlwaysGenerateSeparateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeparateMethodsForRefStruct").CastValueOrDefault<bool>()
+                AlwaysGenerateSeparateMethodsForRefStruct: attr.GetNamedArgument("AlwaysGenerateSeparateMethodsForRefStruct").CastValueOrDefault<bool>(),
+                LanguageUnionSupport: attr.GetNamedArgument("LanguageUnionSupport").CastValueOrDefault<bool>()
             ),
             variantDatas.DrainToImmutable(),
             sharedInterfaces

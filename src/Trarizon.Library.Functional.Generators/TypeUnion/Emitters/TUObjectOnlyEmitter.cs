@@ -24,6 +24,11 @@ internal sealed class TUObjectOnlyEmitter : ITypeUnionEmitter
     {
         writer.WriteLine($"return this.{f_obj} is null;");
     }
+    
+    public void EmitUnionValuePropertyBody(IndentedTextWriter writer, TypeUnionData data)
+    {
+        writer.WriteLine($"return this.{f_obj};");
+    }
 
     public void EmitExplicitCastMethodBody(IndentedTextWriter writer, TypeUnionData data, VariantData variant, string arg0)
     {

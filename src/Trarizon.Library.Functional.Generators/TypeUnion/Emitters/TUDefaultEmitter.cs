@@ -99,6 +99,23 @@ internal sealed class TUDefaultEmitter : ITypeUnionEmitter
         writer.WriteLine($"return this.{f_flag} == 0;");
     }
 
+    public void EmitUnionValuePropertyBody(IndentedTextWriter writer, TypeUnionData data)
+    {
+        writer.WriteLine($"switch (this.{f_flag})");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            foreach (var variant in data.Variants)
+            {
+                writer.WriteLine($"case {variant.Id}:");
+                if (variant.TypeData.TypeKind is VariantTypeKind.Reference)
+                    writer.WriteLine($"    return this.{f_obj};");
+                else
+                    writer.WriteLine($"    return {ExprVariantToT(variant, variant.TypeData.FullyQName)};");
+            }
+        }
+        writer.WriteLine($"return null;");
+    }
+
     public void EmitExplicitCastMethodBody(IndentedTextWriter writer, TypeUnionData data, VariantData variant, string arg0)
     {
         writer.WriteMultipleLines($$"""

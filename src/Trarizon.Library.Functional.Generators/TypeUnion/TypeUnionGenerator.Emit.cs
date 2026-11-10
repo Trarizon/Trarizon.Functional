@@ -26,10 +26,9 @@ partial class TypeUnionGenerator
         if (data.Options.GenerateDangerousMembers)
             writer.WriteLine("// GenerateDangerousMembers");
 
-        // TODO: union pattern match depends on UnionAttribute rather than IUnion
-        bool hasIUnion = env.IUnion && data.Variants.All(x => x.TypeData.IsObjectDerived);
-        if (hasIUnion)
-            writer.WriteLine("// IUnion");
+        bool supportUnion = env.UnionAttribute && data.Options.LanguageUnionSupport && data.Variants.All(x => x.TypeData.IsObjectDerived);
+        if (supportUnion)
+            writer.WriteLine("// Union pattern match");
         bool hasEquality = data.Variants.All(x => x.TypeData.EqualityKind.IsValid);
         if (hasEquality)
             writer.WriteLine("// Equality");
@@ -48,14 +47,14 @@ partial class TypeUnionGenerator
             {
                 $"global::Trarizon.Library.Functional.Unions.ITypeUnion<{data.TypeFullyQName}>"
             };
-            if (hasIUnion)
-                interfaces.Add($"global::System.Runtime.CompilerServices.IUnion");
             if (hasEquality)
                 interfaces.Add($"global::System.IEquatable<{data.TypeFullyQName}>");
             foreach (var interfaceInfo in data.SharedInterfaces ?? [])
                 interfaces.Add(interfaceInfo.TypeFQName);
             var @interface = interfaces.Count == 0 ? "" : $" : {interfaces.JoinToString(", ")}";
 
+            if (supportUnion)
+                writer.WriteLine("[global::System.Runtime.CompilerServices.UnionAttribute]");
             writer.WriteLine($"[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Auto)]");
             writer.WriteLine($"{refLike}partial {data.TypeHierarchy.Keywords} {data.TypeHierarchy.Name}{@interface}");
 
@@ -65,6 +64,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 EmitNullProperty(writer, emitter, data);
                 writer.WriteLine();
+                if (supportUnion)
+                {
+                    EmitValueProperty(writer, emitter, data, env);
+                    writer.WriteLine();
+                }
                 EmitConstructors(writer, emitter, data);
                 writer.WriteLine();
 
@@ -193,6 +197,21 @@ partial class TypeUnionGenerator
             using (writer.EnterBracketIndentScope('{'))
             {
                 emitter.EmitIsNullPropertyBody(writer, data);
+            }
+        }
+    }
+
+    private void EmitValueProperty(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
+    {
+        writer.WriteLine(Utils.GeneratedCodeAttributeList);
+        writer.WriteLine(@"[global::System.Obsolete(""Declared for pattern match only, you shouldn't use it manually"", true)]");
+        writer.WriteLine("public readonly object? Value");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            writer.WriteLine("get");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitUnionValuePropertyBody(writer, data);
             }
         }
     }
@@ -880,5 +899,4 @@ partial class TypeUnionGenerator
         };
         return $"{value}{suffix}";
     }
-
 }

@@ -32,12 +32,12 @@ c.Zip(c, (x, y) => (x, y).ToString().AsSpan());
 
 var uu = new N.O.U();
 
-// var str = uu switch
-// {
-//     string s => s,
-//     int i => i.ToString(),
-//     N.O.D => "D",
-// };
+var str = uu switch
+{
+    string s => s,
+    int i => i.ToString(),
+    N.O.D => "D",
+};
 
 MyUnion mu = default;
 
@@ -49,6 +49,21 @@ if (U.TryCreate("114514", out var u))
         System.Console.WriteLine(i);
     }
 }
+
+MyObjectUnion obju = "str";
+
+var text = obju switch
+{
+    string s => s,
+    List<char> chars => new string(chars.ToArray()),
+};
+
+if (obju is string objus)
+{
+    System.Console.WriteLine(objus);
+}
+
+System.Console.WriteLine(text);
 
 [TypeUnion(typeof(ulong), typeof(string), typeof(DateTime), typeof(ReadOnlySpan<char>))]
 partial struct U;
@@ -83,10 +98,11 @@ namespace N
     partial class O
     {
         [TypeUnion(typeof(int), typeof(string), typeof(D))]
-        // [Union]
+        [Union]
         public partial struct U
         {
-            // public object? Value => this.As<object>();
+            [Obsolete("Use As<object>() instead", true)]
+            public object? Value => this.As<object>();
         }
 
         [TypeUnion(typeof(IDo), typeof(EnumChar),
@@ -129,13 +145,15 @@ namespace N
     typeof(void**), typeof(int**),
     GenerateDangerousMembers = true,
     AlwaysGenerateSeparateMethodsForRefStruct = true,
-    ShareInterfaces = UnionShareInterfaceOption.Explicit)]
+    ShareInterfaces = UnionShareInterfaceOption.Explicit,
+    LanguageUnionSupport = true)]
 partial struct MyUnion
 {
 }
 
-[TypeUnion(typeof(string), typeof(List<char>),
-    ShareInterfaces = UnionShareInterfaceOption.Explicit)]
+[TypeUnion(typeof(string), typeof(List<char>), typeof(int),
+    ShareInterfaces = UnionShareInterfaceOption.Explicit,
+    LanguageUnionSupport = true)]
 partial struct MyObjectUnion
 {
 

@@ -46,5 +46,6 @@ sealed record TypeUnionData(
 
 record struct TypeUnionDataOptions(
     bool GenerateDangerousMembers,
-    bool AlwaysGenerateSeparateMethodsForRefStruct
+    bool AlwaysGenerateSeparateMethodsForRefStruct,
+    bool LanguageUnionSupport
 );

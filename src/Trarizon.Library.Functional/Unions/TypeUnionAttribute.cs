@@ -18,6 +18,11 @@ public class TypeUnionAttribute(params Type[] types) : Attribute
     public bool AlwaysGenerateSeparateMethodsForRefStruct { get; set; }
 
     public UnionShareInterfaceOption ShareInterfaces { get; set; }
+
+    /// <summary>
+    /// Support C#15 union pattern match grammar
+    /// </summary>
+    public bool LanguageUnionSupport { get; set; }
 }
 
 public sealed class TypeUnionAttribute<T1, T2>() : TypeUnionAttribute(typeof(T1), typeof(T2))

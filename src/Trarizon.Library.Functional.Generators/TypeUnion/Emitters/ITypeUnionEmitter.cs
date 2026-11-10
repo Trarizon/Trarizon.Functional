@@ -7,6 +7,7 @@ internal interface ITypeUnionEmitter
     void EmitFields(IndentedTextWriter writer, TypeUnionData data);
     void EmitConstructorBody(IndentedTextWriter writer, TypeUnionData data, VariantData variant, string arg0);
     void EmitIsNullPropertyBody(IndentedTextWriter writer, TypeUnionData data);
+    void EmitUnionValuePropertyBody(IndentedTextWriter writer, TypeUnionData data);
     void EmitExplicitCastMethodBody(IndentedTextWriter writer, TypeUnionData data, VariantData variant, string arg0);
     void EmitIsMethodBody(IndentedTextWriter writer, Env env, TypeUnionData data, string typeArg0);
     void EmitIsExactlyMethodBody(IndentedTextWriter writer, Env env, TypeUnionData data, VariantData variant);
