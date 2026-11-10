@@ -20,51 +20,6 @@ public static partial class TypeUnionMetadata<T> where T : ITypeUnion<T>
             => _variantTypes;
 #endif
 
-    public static uint GetFlagValue<TVariant>()
-#if NET9_0_OR_GREATER
-        where TVariant : allows ref struct
-#endif
-#if NET7_0_OR_GREATER
-        => T.GetFlagValue<TVariant>();
-#else
-        => GetFlagValue(typeof(TVariant));
-#endif
-
-    public static uint GetFlagValue(Type type)
-#if NET7_0_OR_GREATER
-        => T.GetFlagValue(type);
-#else
-    {
-        var types = VariantTypes;
-        for (var i = 0; i < types.Length; i++)
-        {
-            if (types[i] == type)
-            {
-                return unchecked((uint)i + 1);
-            }
-        }
-        return 0u;
-    }
-#endif
-
-    public static Type? GetFlagType(uint flagValue)
-#if NET7_0_OR_GREATER
-        => T.GetFlagType(flagValue);
-#else
-    {
-        if (!IsFlagDefined(flagValue))
-            return null;
-        return VariantTypes[unchecked((int)flagValue - 1)];
-    }
-#endif
-
-    public static bool IsFlagDefined(uint flagValue)
-#if NET7_0_OR_GREATER
-        => T.IsFlagDefined(flagValue);
-#else
-        => flagValue >= 1 && flagValue <= VariantTypes.Length;
-#endif
-
 #if !NET7_0_OR_GREATER
 
     static TypeUnionMetadata()

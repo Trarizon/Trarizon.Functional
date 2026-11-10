@@ -13,63 +13,6 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
     const string TypeUnionAttrMName = "Trarizon.Library.Functional.Unions.TypeUnionAttribute";
     const string TypeUnionAttr2MName = "Trarizon.Library.Functional.Unions.TypeUnionAttribute`2";
 
-    private record class Env(
-        bool MaybeNull,
-        bool UnscopedRef,
-        bool IUnion,
-        string? TargetFramework,
-        LanguageVersion LanguageVersion
-    )
-    {
-        public bool AllowsRefStruct
-        {
-            get
-            {
-                if (TargetFramework is null)
-                    return false;
-#if ROSLYN_4_9_2_OR_GREATER
-                if (LanguageVersion < LanguageVersion.CSharp13)
-                    return false;
-#endif
-                if (TargetFramework.StartsWith("net"))
-                {
-                    if (Version.TryParse(TargetFramework[3..], out var v))
-                        return v.Major >= 9;
-                }
-                return false;
-            }
-        }
-
-        public bool GenericMath
-        {
-            get
-            {
-                if (TargetFramework is null)
-                    return false;
-                if (TargetFramework.StartsWith("net"))
-                {
-                    if (Version.TryParse(TargetFramework[3..], out var v))
-                        return v.Major >= 7;
-                }
-                return false;
-            }
-        }
-
-        public bool CollectionExpression
-        {
-            get
-            {
-                if (TargetFramework is null)
-                    return false;
-#if ROSLYN_4_9_2_OR_GREATER
-                if (LanguageVersion > LanguageVersion.CSharp12)
-                    return true;
-#endif
-                return false;
-            }
-        }
-    }
-
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var aco = context.AnalyzerConfigOptionsProvider.Select((provider, ct) =>
@@ -90,14 +33,15 @@ public sealed partial class TypeUnionGenerator : IIncrementalGenerator
         {
             bool maybeNull = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute", out _);
             bool unscopedRef = compilation.TryGetTypeByMetadataName("System.Diagnostics.CodeAnalysis.UnscopedRefAttribute", out _);
-            bool iunion = false;// compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.IUnion", out _);
-            return (maybeNull, unscopedRef, iunion);
+            bool unionAttr = compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.UnionAttribute", out _);
+            bool iunion = false; // compilation.TryGetTypeByMetadataName("System.Runtime.CompilerServices.IUnion", out _);
+            return (maybeNull, unscopedRef, unionAttr, iunion);
         });
 
         var env = aco.Combine(po).Combine(apis).Select(static (x, ct) =>
         {
-            var ((tf, lv), (maybeNull, unscopedRef, iunion)) = x;
-            return new Env(maybeNull, unscopedRef, iunion, tf, lv);
+            var ((tf, lv), (maybeNull, unscopedRef, unionAttr, iunion)) = x;
+            return new Env(maybeNull, unscopedRef, unionAttr, iunion, tf, lv);
         });
 
         var source = context.SyntaxProvider.ForAttributeWithMetadataName(

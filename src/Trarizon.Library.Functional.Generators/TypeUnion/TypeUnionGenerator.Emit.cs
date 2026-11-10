@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using System.CodeDom.Compiler;
 using System.Diagnostics;
+using Trarizon.Library.Functional.Generators.TypeUnion.Emitters;
 using Trarizon.Library.Roslyn.CSharp;
 using Trarizon.Library.Roslyn.Emitting;
 
@@ -24,6 +25,8 @@ partial class TypeUnionGenerator
             writer.WriteLine("// UnscopedRefAttribute");
         if (data.Options.GenerateDangerousMembers)
             writer.WriteLine("// GenerateDangerousMembers");
+
+        // TODO: union pattern match depends on UnionAttribute rather than IUnion
         bool hasIUnion = env.IUnion && data.Variants.All(x => x.TypeData.IsObjectDerived);
         if (hasIUnion)
             writer.WriteLine("// IUnion");
@@ -34,6 +37,10 @@ partial class TypeUnionGenerator
             writer.WriteLine("// Shared Interfaces");
 
         writer.WriteLine();
+
+        ITypeUnionEmitter emitter = data.Variants.All(x => x.TypeData.TypeKind is VariantTypeKind.Reference or VariantTypeKind.Void)
+            ? new TUObjectOnlyEmitter()
+            : new TUDefaultEmitter();
 
         using (writer.EmitCSharpPartialTypeHierarchy(data.TypeHierarchy.Parent))
         {
@@ -54,18 +61,18 @@ partial class TypeUnionGenerator
 
             using (writer.EnterBracketIndentScope('{'))
             {
-                EmitFields(writer, data);
+                emitter.EmitFields(writer, data);
                 writer.WriteLine();
-                EmitNullProperty(writer, data);
+                EmitNullProperty(writer, emitter, data);
                 writer.WriteLine();
-                EmitConstructors(writer, data);
+                EmitConstructors(writer, emitter, data);
                 writer.WriteLine();
 
                 writer.WriteLine("#region Cast");
                 writer.WriteLine();
                 EmitImplicitCastMethods(writer, data);
                 writer.WriteLine();
-                EmitExplicitCastMethods(writer, data);
+                EmitExplicitCastMethods(writer, emitter, data);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
@@ -74,48 +81,33 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 EmitAsMethod(writer, data, env);
                 writer.WriteLine();
-                EmitAsExactlyMethod(writer, data, env);
-                writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
 
                 writer.WriteLine("#region Is");
                 writer.WriteLine();
-                EmitIsMethod(writer, data, env);
-                writer.WriteLine();
-                EmitIsExactlyByParameterMethod(writer, data);
-                writer.WriteLine();
-                EmitIsExactlyMethod(writer, data, env);
+                EmitIsMethod(writer, emitter, data, env);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
 
                 writer.WriteLine("#region Try Is");
                 writer.WriteLine();
-                EmitIsOutMethod(writer, data, env);
-                writer.WriteLine();
-                EmitIsExactlyOutMethod(writer, data, env);
-                writer.WriteLine();
-                writer.WriteLine("#endregion");
-                writer.WriteLine();
-
-                writer.WriteLine("#region Match");
-                writer.WriteLine();
-                EmitMatchMethods(writer, data, env);
+                EmitIsOutMethod(writer, emitter, data, env);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
 
                 writer.WriteLine("#region TryCreate");
                 writer.WriteLine();
-                EmitTryCreateMethod(writer, data, env);
+                EmitTryCreateMethod(writer, emitter, data, env);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
 
                 writer.WriteLine("#region Equality");
                 writer.WriteLine();
-                EmitEqualityMethods(writer, data, env);
+                EmitEqualityMethods(writer, emitter, data, env);
                 writer.WriteLine();
                 writer.WriteLine("#endregion");
                 writer.WriteLine();
@@ -127,7 +119,7 @@ partial class TypeUnionGenerator
                 {
                     writer.WriteLine("#region Shared Interfaces Implementations");
                     writer.WriteLine();
-                    EmitSharedInterfaceImplementations(writer, data, env);
+                    EmitSharedInterfaceImplementations(writer, emitter, data, env);
                     writer.WriteLine();
                     writer.WriteLine("#endregion");
                     writer.WriteLine();
@@ -141,14 +133,16 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
 
 
-                EmitUnmanagedStructType(writer, data);
+                // EmitUnmanagedStructType(writer, data);
+
+                emitter.EmitHelperMembers(writer, env, data);
 
                 if (data.Options.GenerateDangerousMembers)
                 {
                     writer.WriteLine();
                     writer.WriteLine("#region DangerousGetValueRef");
                     writer.WriteLine();
-                    EmitDangerousGetValueMethods(writer, data, env);
+                    EmitDangerousGetValueMethods(writer, emitter, data, env);
                     writer.WriteLine();
                     writer.WriteLine("#endregion");
                 }
@@ -156,71 +150,51 @@ partial class TypeUnionGenerator
         }
     }
 
-    private void EmitFields(IndentedTextWriter writer, TypeUnionData data)
+    private void EmitConstructors(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data)
     {
-        // __um_fieldName // union_member
-        var flagType = data.Variants.Length switch
-        {
-            <= byte.MaxValue => "byte",
-            <= ushort.MaxValue => "ushort",
-            _ => "uint",
-        };
-
-        writer.WriteLine($"private readonly {flagType} __um_flag;");
-
-        if (data.Variants.Any(x => x.TypeData.TypeKind is VariantTypeKind.Reference))
-        {
-            writer.WriteLine($"private readonly object __um_obj;");
-        }
-        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is VariantTypeKind.Managed))
-        {
-            writer.WriteLine($"private readonly {variant.TypeData.FullyQName} __um_managed{variant.FieldId};");
-        }
-        if (data.Variants.Any(x => x.TypeData.TypeKind.IsUnmanaged))
-        {
-            writer.WriteLine($"private readonly __ut_Unmanaged __um_unmanaged;");
-        }
-    }
-
-    private void EmitConstructors(IndentedTextWriter writer, TypeUnionData data)
-    {
+        bool hasVoid = false;
         foreach (var variant in data.Variants.JoinWriteEmptyLine(writer))
         {
+            writer.WriteLine(Utils.GeneratedCodeAttributeList);
+
             if (variant.TypeData.TypeKind is VariantTypeKind.Void)
             {
-                writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    private {{data.TypeName}}(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel _)
-                    {
-                        this.__um_flag = {{LiteralFlag(variant.Id, data)}};
-                    }
-                    """);
-                writer.WriteLine();
-                writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public static {{data.TypeFullyQName}} Void { get { return new {{data.TypeFullyQName}}(default(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel)); } }
-                    """);
+                hasVoid = true;
+                writer.WriteLine($"private {data.TypeName}(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel value)");
             }
             else
             {
                 var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
-                var cast = variant.TypeData.TypeKind.IsPointer ? $"(global::System.IntPtr)" : "";
-                writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public {{@unsafe}}{{data.TypeName}}({{variant.TypeData.FullyQName}} value)
-                    {
-                        this.__um_flag = {{LiteralFlag(variant.Id, data)}};
-                        {{ExprVariantFieldAccess(variant)}} = {{cast}}value;
-                    }
-                    """);
+                writer.WriteLine($"public {@unsafe}{data.TypeName}({variant.TypeData.FullyQName} value)");
             }
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitConstructorBody(writer, data, variant, "value");
+            }
+        }
+
+        if (hasVoid)
+        {
+            writer.WriteLine();
+            writer.WriteLine(Utils.GeneratedCodeAttributeList);
+            writer.WriteMultipleLines($$"""
+                public static {{data.TypeFullyQName}} Void { get { return new {{data.TypeFullyQName}}(global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.VoidSentinel.Value); } }
+                """);
         }
     }
 
-    private void EmitNullProperty(IndentedTextWriter writer, TypeUnionData data)
+    private void EmitNullProperty(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data)
     {
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public bool IsNull {{ get {{ return this.__um_flag == {LiteralFlag(0, data)}; }} }}");
+        writer.WriteLine("public bool IsNull");
+        using (writer.EnterBracketIndentScope('{'))
+        {
+            writer.WriteLine("get");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsNullPropertyBody(writer, data);
+            }
+        }
     }
 
     private void EmitImplicitCastMethods(IndentedTextWriter writer, TypeUnionData data)
@@ -233,20 +207,17 @@ partial class TypeUnionGenerator
         }
     }
 
-    private void EmitExplicitCastMethods(IndentedTextWriter writer, TypeUnionData data)
+    private void EmitExplicitCastMethods(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data)
     {
         foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is not VariantTypeKind.Void && !x.TypeData.IsInterface).JoinWriteEmptyLine(writer))
         {
             var @unsafe = variant.TypeData.TypeKind.IsPointer ? "unsafe " : "";
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public static {{@unsafe}}explicit operator {{variant.TypeData.FullyQName}}({{data.TypeFullyQName}} value)
-                {
-                    if (value.__um_flag != {{LiteralFlag(variant.Id, data)}})
-                        global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowInvalidCastException($"Unable to cast {{data.TypeFullName}} to {{variant.TypeData.FullName}}");
-                    return {{ExprVariantToT(variant, variant.TypeData.FullyQName, "value")}};
-                }
-                """);
+            writer.WriteLine($"public static {@unsafe}explicit operator {variant.TypeData.FullyQName}({data.TypeFullyQName} value)");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitExplicitCastMethodBody(writer, data, variant, "value");
+            }
         }
     }
 
@@ -282,146 +253,9 @@ partial class TypeUnionGenerator
             """);
     }
 
-    private void EmitAsExactlyMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
-    {
-        var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
-
-        writer.WriteMultipleLines($$"""
-            /// <inheritdoc />
-            {{Utils.GeneratedCodeAttributeList}}
-            [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-            public readonly T? AsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){{@allows}}
-            {
-                this.IsExactly<T>(out var value);
-                return value;
-            }
-            """);
-
-        // ref struct
-
-        if (!env.AllowsRefStruct || data.Options.AlwaysGenerateSeparateMethodsForRefStruct)
-        {
-            // For old runtime, emit specialized method for ref-like type
-            foreach (var variant in data.Variants.Where(x => x.TypeData.IsRefLikeType))
-            {
-                // variant is ref struct, so possible type kind is Managed or Unmanaged
-
-                writer.WriteLine();
-                writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
-                writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public readonly {{variant.TypeData.FullyQName}} As_{{variant.ReadableIdentifier}}()
-                    {
-                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                            return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                        return default({{variant.TypeData.FullyQName}});
-                    }
-                    """);
-            }
-        }
-
-        // delegate*<>
-
-        foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind is VariantTypeKind.FunctionPointer))
-        {
-            writer.WriteLine();
-            writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
-            writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly {{variant.TypeData.FullyQName}} AsFunctionPointer_{{variant.ReadableIdentifier}}()
-                {
-                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                        return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                    return default({{variant.TypeData.FullyQName}});
-                }
-                """);
-        }
-
-
-        // T*
-
-        var nonVoidPointers = data.Variants
-            .Where(x => x.TypeData.IsNonVoidPointer)
-            .GroupBy(x => x.TypeData.PointerLevel);
-
-        foreach (var group in nonVoidPointers)
-        {
-            var stars = new string('*', group.Key);
-            writer.WriteLine();
-            writer.WriteMultipleLines(DocCommentAsExactly($"T{stars}"));
-            writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteLine($"public unsafe readonly T{stars} AsPointer{(group.Key <= 1 ? "" : $"{group.Key}")}<T>(){@allows}");
-            using (writer.EnterBracketIndentScope('{'))
-            {
-                writer.WriteLine($"this.IsPointer{(group.Key <= 1 ? "" : $"{group.Key}")}<T>(out T{stars} value);");
-                writer.WriteLine($"return value;");
-            }
-        }
-
-        // void*
-
-        foreach (var group in data.Variants.Where(x => x.TypeData.IsVoidPointer))
-        {
-            var stars = new string('*', group.TypeData.PointerLevel);
-            writer.WriteLine();
-            writer.WriteMultipleLines(DocCommentAsExactly($"void{stars}"));
-            writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly void{{stars}} AsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
-                {
-                    if (this.__um_flag == {{LiteralFlag(group.Id, data)}})
-                        return {{ExprVariantToT(group, $"void{stars}")}};
-                    return default(void{{stars}});
-                }
-                """);
-        }
-
-        // ref struct*
-
-        if (!env.AllowsRefStruct)
-        {
-            // for old runtime, emit specialized method of ref-like type pointer
-            foreach (var variant in data.Variants.Where(x => x.TypeData.IsNonVoidPointer && x.TypeData.FinalPointerAtType.IsRefLikeType))
-            {
-                var pointerLevel = variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}";
-                // variant is ref struct, so possible type kind is Managed or Unmanaged
-                writer.WriteLine();
-                writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
-                writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public unsafe readonly {{variant.TypeData.FullyQName}} AsPointer{{pointerLevel}}_{{variant.ReadableIdentifier}}()
-                    {
-                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                            return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                        return default({{variant.TypeData.FullyQName}});
-                    }
-                    """);
-            }
-        }
-
-        // delegate*<>*
-
-        foreach (var variant in data.Variants.Where(x => x.TypeData.IsNonVoidPointer && x.TypeData.FinalPointerAtType.TypeKind is VariantTypeKind.FunctionPointer))
-        {
-            var pointerLevel = variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}";
-
-            writer.WriteLine();
-            writer.WriteMultipleLines(DocCommentAsExactly(variant.TypeData.MinimalQName));
-            writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly {{variant.TypeData.FullyQName}} AsPointer{{pointerLevel}}ToFunctionPointer_{{variant.ReadableIdentifier}}()
-                {
-                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                        return {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                    return default({{variant.TypeData.FullyQName}});
-                }
-                """);
-        }
-    }
-
     // emit: Is
 
-    private void EmitIsMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitIsMethod(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
@@ -430,74 +264,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>(){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
-            writer.WriteLine("switch (this.__um_flag)");
-            using (writer.EnterBracketIndentScope('{'))
-            {
-                foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-                {
-                    if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
-                    {
-                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                        using (writer.EnterBracketIndentScope('{'))
-                        {
-                            writer.WriteLine($"if (typeof(T) == typeof({variant.TypeData.FullyQName}))");
-                            writer.WriteLine($"    return true;");
-                            if (!variant.TypeData.IsRefLikeType)
-                            {
-                                writer.WriteLine($"return {ExprVariantToT(variant, variant.TypeData.FullyQName)} is T;");
-                            }
-                            else
-                            {
-                                writer.WriteLine($"return false;");
-                            }
-                        }
-                    }
-                }
-            }
-            writer.WriteLine("return false;");
-        }
-    }
-
-    private void EmitIsExactlyByParameterMethod(IndentedTextWriter writer, TypeUnionData data)
-    {
-        // by Type
-
-        writer.WriteMultipleLines(DocCommentIsExactly(@"<paramref name=""type""/>", code: false));
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool IsExactly(global::System.Type type)");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants)
-            {
-                writer.WriteMultipleLines($$"""
-                    if (typeof({{variant.TypeData.FullyQName}}) == type)
-                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                    """);
-            }
-            writer.WriteLine("return false;");
-        }
-    }
-
-    private void EmitIsExactlyMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
-    {
-        var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(){@allows}");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
-                {
-                    writer.WriteMultipleLines($$"""
-                        if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                            return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                        """);
-                }
-            }
-            writer.WriteLine("return false;");
+            emitter.EmitIsMethodBody(writer, env, data, "T");
         }
 
         // void
@@ -507,12 +274,15 @@ partial class TypeUnionGenerator
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly("void"));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public readonly bool IsVoid()
+            writer.WriteLine($"public readonly bool IsVoid");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                writer.WriteLine("get");
+                using (writer.EnterBracketIndentScope('{'))
                 {
-                    return this.__um_flag == {{LiteralFlag(voidVariant.Id, data)}};
+                    emitter.EmitIsExactlyMethodBody(writer, env, data, voidVariant);
                 }
-                """);
+            }
         }
 
         // ref struct
@@ -524,12 +294,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
                 writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public readonly bool Is_{{variant.ReadableIdentifier}}()
-                    {
-                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                    }
-                    """);
+                writer.WriteLine($"public readonly bool Is_{variant.ReadableIdentifier}()");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    emitter.EmitIsExactlyMethodBody(writer, env, data, variant);
+                }
             }
         }
 
@@ -540,12 +309,11 @@ partial class TypeUnionGenerator
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsFunctionPointer_{{variant.ReadableIdentifier}}()
-                {
-                    return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                }
-                """);
+            writer.WriteLine($"public unsafe readonly bool IsFunctionPointer_{variant.ReadableIdentifier}()");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsExactlyMethodBody(writer, env, data, variant);
+            }
         }
 
         // T*
@@ -563,32 +331,23 @@ partial class TypeUnionGenerator
             writer.WriteLine($"public unsafe readonly bool IsPointer{(group.Key <= 1 ? "" : $"{group.Key}")}<T>(){@allows}");
             using (writer.EnterBracketIndentScope('{'))
             {
-                foreach (var variant in group)
-                {
-                    if (env.AllowsRefStruct || !variant.TypeData.FinalPointerAtType.IsRefLikeType)
-                    {
-                        writer.WriteLine($"if (typeof(T{stars}) == typeof({variant.TypeData.FullyQName}))");
-                        writer.WriteLine($"    return this.__um_flag == {LiteralFlag(variant.Id, data)};");
-                    }
-                }
-                writer.WriteLine($"return false;");
+                emitter.EmitIsPointerMethodBody(writer, env, data, group, group.Key, "T");
             }
         }
 
         // void*
 
-        foreach (var group in data.Variants.Where(x => x.TypeData.IsVoidPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.IsVoidPointer))
         {
-            var stars = new string('*', group.TypeData.PointerLevel);
+            var stars = new string('*', variant.TypeData.PointerLevel);
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly($"void{stars}"));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}()
-                {
-                    return this.__um_flag == {{LiteralFlag(group.Id, data)}};
-                }
-                """);
+            writer.WriteLine($"public unsafe readonly bool IsVoidPointer{(variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}")}()");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsExactlyMethodBody(writer, env, data, variant);
+            }
         }
 
         // ref struct*
@@ -601,12 +360,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
                 writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public unsafe readonly bool IsPointer{{ptrLv}}_{{variant.ReadableIdentifier}}()
-                    {
-                        return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                    }
-                    """);
+                writer.WriteLine($"public unsafe readonly bool IsPointer{ptrLv}_{variant.ReadableIdentifier}()");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    emitter.EmitIsExactlyMethodBody(writer, env, data, variant);
+                }
             }
         }
 
@@ -618,18 +376,17 @@ partial class TypeUnionGenerator
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsPointer{{ptrLv}}ToFunctionPointer_{{variant.ReadableIdentifier}}()
-                {
-                    return this.__um_flag == {{LiteralFlag(variant.Id, data)}};
-                }
-                """);
+            writer.WriteLine($"public unsafe readonly bool IsPointer{ptrLv}ToFunctionPointer_{variant.ReadableIdentifier}()");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsExactlyMethodBody(writer, env, data, variant);
+            }
         }
     }
 
     // emit: Is out
 
-    private void EmitIsOutMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitIsOutMethod(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
         var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
         var @maybeNullWhen = env.MaybeNull ? "[global::System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] " : "";
@@ -639,85 +396,8 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public readonly bool Is<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(true)] T>({maybeNullWhen}out T value){@allows}");
         using (writer.EnterBracketIndentScope('{'))
         {
-            writer.WriteLine("switch (this.__um_flag)");
-            using (writer.EnterBracketIndentScope('{'))
-            {
-                foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-                {
-                    if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
-                    {
-                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                        using (writer.EnterBracketIndentScope('{'))
-                        {
-                            writer.WriteLine($"if (typeof(T) == typeof({variant.TypeData.FullyQName}))");
-                            writer.WriteLine($"{{");
-                            writer.WriteLine($"    value = {ExprVariantToT(variant)};");
-                            writer.WriteLine($"    return true;");
-                            writer.WriteLine($"}}");
-                            if (!variant.TypeData.IsRefLikeType)
-                            {
-                                writer.WriteLine($"if ({ExprVariantToT(variant, variant.TypeData.FullyQName)} is T typed)");
-                                writer.WriteLine($"{{");
-                                writer.WriteLine($"    value = typed;");
-                                writer.WriteLine($"    return true;");
-                                writer.WriteLine($"}}");
-                            }
-                            writer.WriteLine($"break;");
-                        }
-                    }
-                }
-            }
-            writer.WriteLine("value = default(T);");
-            writer.WriteLine("return false;");
+            emitter.EmitIsOutMethodBody(writer, env, data, "T", "value");
         }
-    }
-
-    private void EmitIsExactlyOutMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
-    {
-        var @allows = env.AllowsRefStruct ? " where T : allows ref struct" : "";
-        var @maybeNullWhen = env.MaybeNull ? "[global::System.Diagnostics.CodeAnalysis.MaybeNullWhenAttribute(false)] " : "";
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly bool IsExactly<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>({maybeNullWhen}out T value){@allows}");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                if (env.AllowsRefStruct || !variant.TypeData.IsRefLikeType)
-                {
-                    writer.WriteMultipleLines($$"""
-                        if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                        {
-                            if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                            {
-                                value = {{ExprVariantToT(variant)}};
-                                return true;
-                            }
-                            value = default(T);
-                            return false;
-                        }
-                        """);
-                }
-            }
-            writer.WriteLine("value = default(T);");
-            writer.WriteLine("return false;");
-        }
-
-        // void
-
-        // if (data.Variants.FirstOrDefault(x => x.TypeData.TypeKind is VariantTypeKind.Void) is { } voidVariant)
-        // {
-        //     writer.WriteLine();
-        //     writer.WriteMultipleLines(DocCommentIsExactly("void"));
-        //     writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        //     writer.WriteMultipleLines($$"""
-        //         public readonly bool IsVoid()
-        //         {
-        //             return this.__um_flag == {{voidVariant.Id}}u;
-        //         }
-        //         """);
-        // }
 
         // ref struct
 
@@ -728,18 +408,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
                 writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public readonly bool Is_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
-                    {
-                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                        {
-                            value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                            return true;
-                        }
-                        value = default({{variant.TypeData.FullyQName}});
-                        return false;
-                    }
-                    """);
+                writer.WriteLine($"public readonly bool Is_{variant.ReadableIdentifier}(out {variant.TypeData.FullyQName} value)");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    emitter.EmitIsExactlyOutMethodBody(writer, env, data, variant, "value");
+                }
             }
         }
 
@@ -750,18 +423,11 @@ partial class TypeUnionGenerator
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsFunctionPointer_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
-                {
-                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                    {
-                        value = {{ExprVariantToT(variant)}};
-                        return true;
-                    }
-                    value = default({{variant.TypeData.FullyQName}});
-                    return false;
-                }
-                """);
+            writer.WriteLine($"public readonly bool IsFunctionPointer_{variant.ReadableIdentifier}(out {variant.TypeData.FullyQName} value)");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsExactlyOutMethodBody(writer, env, data, variant, "value");
+            }
         }
 
         // T*
@@ -779,49 +445,23 @@ partial class TypeUnionGenerator
             writer.WriteLine($"public unsafe readonly bool IsPointer{(group.Key <= 1 ? "" : $"{group.Key}")}<T>(out T{stars} value){@allows}");
             using (writer.EnterBracketIndentScope('{'))
             {
-                foreach (var variant in group)
-                {
-                    if (env.AllowsRefStruct || !variant.TypeData.FinalPointerAtType.IsRefLikeType)
-                    {
-                        writer.WriteMultipleLines($$"""
-                            if (typeof(T{{stars}}) == typeof({{variant.TypeData.FullyQName}}))
-                            {
-                                if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                                {
-                                    value = {{ExprVariantToT(variant, $"T{stars}")}};
-                                    return true;
-                                }
-                                value = default(T{{stars}});
-                                return false;
-                            }
-                            """);
-                    }
-                }
-                writer.WriteLine($"value = default(T{stars});");
-                writer.WriteLine($"return false;");
+                emitter.EmitIsPointerOutMethodBody(writer, env, data, group, group.Key, "T", "value");
             }
         }
 
         // void*
 
-        foreach (var group in data.Variants.Where(x => x.TypeData.IsVoidPointer))
+        foreach (var variant in data.Variants.Where(x => x.TypeData.IsVoidPointer))
         {
-            var stars = new string('*', group.TypeData.PointerLevel);
+            var stars = new string('*', variant.TypeData.PointerLevel);
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly($"void{stars}"));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsVoidPointer{{(group.TypeData.PointerLevel <= 1 ? "" : $"{group.TypeData.PointerLevel}")}}(out void{{stars}} value)
-                {
-                    if (this.__um_flag == {{LiteralFlag(group.Id, data)}})
-                    {
-                        value = {{ExprVariantToT(group, $"void{stars}")}};
-                        return true;
-                    }
-                    value = default(void{{stars}});
-                    return false;
-                }
-                """);
+            writer.WriteLine($"public unsafe readonly bool IsVoidPointer{(variant.TypeData.PointerLevel <= 1 ? "" : $"{variant.TypeData.PointerLevel}")}(out void{stars} value)");
+            using (writer.EnterBracketIndentScope('{'))
+            {
+                emitter.EmitIsExactlyOutMethodBody(writer, env, data, variant, "value");
+            }
         }
 
         // ref struct*
@@ -834,18 +474,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine();
                 writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
                 writer.WriteLine(Utils.GeneratedCodeAttributeList);
-                writer.WriteMultipleLines($$"""
-                    public unsafe readonly bool IsPointer{{ptrLv}}_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
-                    {
-                        if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                        {
-                            value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                            return true;
-                        }
-                        value = default({{variant.TypeData.FullyQName}});
-                        return false;
-                    }
-                    """);
+                writer.WriteLine($"public unsafe readonly bool IsPointer{ptrLv}_{variant.ReadableIdentifier}(out {variant.TypeData.FullyQName} value)");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    emitter.EmitIsExactlyOutMethodBody(writer, env, data, variant, "value");
+                }
             }
         }
 
@@ -857,82 +490,17 @@ partial class TypeUnionGenerator
             writer.WriteLine();
             writer.WriteMultipleLines(DocCommentIsExactly(variant.TypeData.MinimalQName));
             writer.WriteLine(Utils.GeneratedCodeAttributeList);
-            writer.WriteMultipleLines($$"""
-                public unsafe readonly bool IsPointer{{ptrLv}}ToFunctionPointer_{{variant.ReadableIdentifier}}(out {{variant.TypeData.FullyQName}} value)
-                {
-                    if (this.__um_flag == {{LiteralFlag(variant.Id, data)}})
-                    {
-                        value = {{ExprVariantToT(variant, variant.TypeData.FullyQName)}};
-                        return true;
-                    }
-                    value = default({{variant.TypeData.FullyQName}});
-                    return false;
-                }
-                """);
-        }
-    }
-
-    // emit: Match
-
-    private void EmitMatchMethods(IndentedTextWriter writer, TypeUnionData data, Env env)
-    {
-        if (!data.Variants.All(x => x.TypeData.TypeKind.IsGenericable || x.TypeData.TypeKind is VariantTypeKind.Void))
-            return;
-
-        var @allows = env.AllowsRefStruct ? " where TResult : allows ref struct" : "";
-
-        // Return void
-
-        var parameters = data.Variants
-            .Select(x => $"global::System.Action{(x.TypeData.TypeKind is VariantTypeKind.Void ? "" : $"<{x.TypeData.FullyQName}>")}? handler{x.Id} = null")
-            .JoinToString(", ");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly void Match({parameters})");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            writer.WriteLine("switch (__um_flag)");
+            writer.WriteLine($"public unsafe readonly bool IsPointer{ptrLv}ToFunctionPointer_{variant.ReadableIdentifier}(out {variant.TypeData.FullyQName} value)");
             using (writer.EnterBracketIndentScope('{'))
             {
-                foreach (var variant in data.Variants)
-                {
-                    var arg = variant.TypeData.TypeKind is VariantTypeKind.Void ? "" : ExprVariantToT(variant, variant.TypeData.FullyQName);
-                    writer.WriteMultipleLines($$"""
-                        case {{LiteralFlag(variant.Id, data)}}: handler{{variant.Id}}?.Invoke({{arg}}); break;
-                        """);
-                }
+                emitter.EmitIsExactlyOutMethodBody(writer, env, data, variant, "value");
             }
-        }
-
-        // Return T
-
-        var parametersFunc = data.Variants
-            .Select(x => $"global::System.Func<{(x.TypeData.TypeKind is VariantTypeKind.Void ? "" : $"{x.TypeData.FullyQName}, ")}TResult> handler{x.Id}")
-            .JoinToString(", ");
-
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"public readonly TResult Match<TResult>({parametersFunc}){@allows}");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            writer.WriteLine("switch (__um_flag)");
-            using (writer.EnterBracketIndentScope('{'))
-            {
-                foreach (var variant in data.Variants)
-                {
-                    var arg = variant.TypeData.TypeKind is VariantTypeKind.Void ? "" : ExprVariantToT(variant, variant.TypeData.FullyQName);
-                    writer.WriteMultipleLines($$"""
-                        case {{LiteralFlag(variant.Id, data)}}: return handler{{variant.Id}}.Invoke({{arg}});
-                        """);
-                }
-            }
-            const string ThrowUUCE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowUnknownUnionCaseException()";
-            writer.WriteLine($"{ThrowUUCE};");
-            writer.WriteLine("return default(TResult)!;");
         }
     }
 
     // emit: TryCreate
 
-    private void EmitTryCreateMethod(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitTryCreateMethod(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
         var TAllowsRefStruct = env.AllowsRefStruct ? " where T : allows ref struct" : "";
 
@@ -941,18 +509,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public static bool TryCreate<[global::Trarizon.Library.Functional.CompilerServices.GeneratedTypeUnionVariantTypeParameterAttribute(false)] T>(T value, out {data.TypeFullyQName} result){TAllowsRefStruct}");
         using (writer.EnterBracketIndentScope('{'))
         {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                writer.WriteMultipleLines($$"""
-                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                    {
-                        result = new {{data.TypeFullyQName}}(global::System.Runtime.CompilerServices.Unsafe.As<T, {{variant.TypeData.FullyQName}}>(ref value));
-                        return true;
-                    }
-                    """);
-            }
-            writer.WriteLine($"result = default;");
-            writer.WriteLine($"return false;");
+            emitter.EmitTryCreateMethodBody(writer, env, data, "T", "value", "result");
         }
     }
 
@@ -976,73 +533,11 @@ partial class TypeUnionGenerator
         writer.WriteLine("/// <inheritdoc />");
         writer.WriteLine(Utils.GeneratedCodeAttributeList);
         writer.WriteLine($"static global::System.ReadOnlySpan<global::System.Type> global::Trarizon.Library.Functional.Unions.ITypeUnion.VariantTypes {{ get {{ return __ut_MetadataProvider.VariantTypes;  }} }}");
-
-        writer.WriteLine();
-
-        // GetFlagValue
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"static uint global::Trarizon.Library.Functional.Unions.ITypeUnion.GetFlagValue<TVariant>()");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                writer.WriteMultipleLines($$"""
-                    if (typeof(TVariant) == typeof({{variant.TypeData.FullyQName}}))
-                        return {{LiteralFlag(variant.Id, data)}};
-                    """);
-            }
-            writer.WriteLine($"return 0u;");
-        }
-
-        writer.WriteLine();
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"static uint global::Trarizon.Library.Functional.Unions.ITypeUnion.GetFlagValue(global::System.Type type)");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants)
-            {
-                writer.WriteMultipleLines($$"""
-                    if (type == typeof({{variant.TypeData.FullyQName}}))
-                        return {{variant.Id}}u;
-                    """);
-            }
-            writer.WriteLine($"return 0u;");
-        }
-
-        writer.WriteLine();
-
-        // TryCreate
-
-        writer.WriteLine("/// <inheritdoc />");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"static bool global::Trarizon.Library.Functional.Unions.ITypeUnion<{data.TypeFullyQName}>.TryCreate<T>(uint flagValue, T value, out {data.TypeFullyQName} result)");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(x => x.TypeData.TypeKind.IsGenericable))
-            {
-                writer.WriteMultipleLines($$"""
-                    if (typeof(T) == typeof({{variant.TypeData.FullyQName}}))
-                    {
-                        if (flagValue == {{variant.Id}}u)
-                        {
-                            result = global::System.Runtime.CompilerServices.Unsafe.As<T, {{data.TypeFullyQName}}>(ref value);
-                            return true;
-                        }
-                    }
-                    """);
-            }
-            writer.WriteLine($"result = default;");
-            writer.WriteLine($"return false;");
-        }
     }
 
     // emit: equality
 
-    private void EmitEqualityMethods(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitEqualityMethods(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
         var hasEquality = data.Variants.All(x => x.TypeData.EqualityKind.IsValid);
         if (!hasEquality)
@@ -1059,44 +554,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"public {@unsafe}readonly bool Equals({data.TypeFullyQName} other)");
         using (writer.EnterBracketIndentScope('{'))
         {
-            bool requiresEqHelper = false;
-
-            writer.WriteMultipleLines("""
-                if (this.__um_flag != other.__um_flag)
-                    return false;
-                """);
-            writer.WriteLine();
-            writer.WriteLine("switch (this.__um_flag)");
-            using (writer.EnterBracketIndentScope('{'))
-            {
-                writer.WriteLine($"case {LiteralFlag(0, data)}: return true;");
-                foreach (var variant in data.Variants)
-                {
-                    string returnExpr = variant.TypeData.EqualityKind switch
-                    {
-                        VariantTypeEqualityKind.Unit => "true",
-                        VariantTypeEqualityKind.Comparer => $"global::System.Collections.Generic.EqualityComparer<{variant.TypeData.FullyQName}>.Default.Equals({ExprVariantToT(variant, variant.TypeData.FullyQName)}, {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")})",
-                        VariantTypeEqualityKind.IEquatable => $"__lm_IEquatable_Equals({ExprVariantToT(variant, variant.TypeData.FullyQName)}, {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")})",
-                        VariantTypeEqualityKind.OperatorEq => $"{ExprVariantToT(variant, variant.TypeData.FullyQName)} == {ExprVariantToT(variant, variant.TypeData.FullyQName, "other")}",
-                        _ => null!,
-                    };
-                    requiresEqHelper = variant.TypeData.EqualityKind == VariantTypeEqualityKind.IEquatable;
-                    Debug.Assert(returnExpr is not null);
-
-                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: return {returnExpr};");
-                }
-            }
-            writer.WriteLine("return false;");
-
-            if (requiresEqHelper)
-            {
-                writer.WriteLine();
-                writer.WriteMultipleLines($"""
-                    static bool __lm_IEquatable_Equals<__TEq>(__TEq left, __TEq right) where __TEq : IEquatable<__TEq>{allowsRefStruct}
-                        => left.Equals(right);
-                    """);
-            }
-
+            emitter.EmitEqualsMethodBody(writer, env, data, "other");
         }
 
         writer.WriteLine();
@@ -1142,62 +600,14 @@ partial class TypeUnionGenerator
             writer.WriteLine($"public {@unsafe}override int GetHashCode()");
             using (writer.EnterBracketIndentScope('{'))
             {
-                writer.WriteLine("unchecked");
-                using (writer.EnterBracketIndentScope('{'))
-                {
-                    writer.WriteLine($"int hash = 17;");
-                    writer.WriteLine($"hash = (hash * 397) ^ this.__um_flag.GetHashCode();");
-                    writer.WriteLine($"switch (this.__um_flag)");
-                    using (writer.EnterBracketIndentScope('{'))
-                    {
-                        foreach (var variant in data.Variants)
-                        {
-                            switch (variant.TypeData.TypeKind)
-                            {
-                                case VariantTypeKind.Void:
-                                    break;
-                                case { IsPointer: true }:
-                                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: hash = (hash * 397) ^ {ExprVariantFieldAccess(variant)}.GetHashCode(); break;");
-                                    break;
-                                default:
-                                    writer.WriteLine($"case {LiteralFlag(variant.Id, data)}: hash = (hash * 397) ^ {ExprVariantToT(variant, variant.TypeData.FullyQName)}.GetHashCode(); break;");
-                                    break;
-                            }
-                        }
-                    }
-                    writer.WriteLine($"return hash;");
-                }
-            }
-        }
-    }
-
-    // emit: Unmanaged struct
-
-    private void EmitUnmanagedStructType(IndentedTextWriter writer, TypeUnionData data)
-    {
-        var @ref = data.Variants.Any(x => x.TypeData.TypeKind.IsUnmanaged && x.TypeData.IsRefLikeType) ? "ref " : "";
-
-        writer.WriteLine($"[global::System.Runtime.InteropServices.StructLayout(global::System.Runtime.InteropServices.LayoutKind.Explicit)]");
-        writer.WriteLine(Utils.GeneratedCodeAttributeList);
-        writer.WriteLine($"private {@ref}struct __ut_Unmanaged");
-        using (writer.EnterBracketIndentScope('{'))
-        {
-            foreach (var variant in data.Variants.Where(v => v.TypeData.TypeKind is VariantTypeKind.Unmanaged))
-            {
-                writer.WriteLine($"[global::System.Runtime.InteropServices.FieldOffset(0)]");
-                writer.WriteLine($"public {variant.TypeData.FullyQName} _{variant.FieldId};");
-            }
-            if (data.Variants.Any(x => x.TypeData.TypeKind.IsPointer))
-            {
-                writer.WriteLine($"[global::System.Runtime.InteropServices.FieldOffset(0)]");
-                writer.WriteLine($"public global::System.IntPtr _ptr;");
+                emitter.EmitGetHashCodeMethodBody(writer, env, data);
             }
         }
     }
 
     // emit: Dangerous
 
-    private void EmitDangerousGetValueMethods(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitDangerousGetValueMethods(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
         var c_allows = env.AllowsRefStruct ? ", allows ref struct" : "";
 
@@ -1208,23 +618,7 @@ partial class TypeUnionGenerator
         writer.WriteLine($"private readonly ref readonly T DangerousGetValueRef<T>()");
         using (writer.EnterBracketIndentScope('{'))
         {
-            if (data.Variants.Any(x => x.TypeData.TypeKind is VariantTypeKind.Reference))
-            {
-                writer.WriteLine($"if (!typeof(T).IsValueType)");
-                writer.WriteLine($"    return ref global::System.Runtime.CompilerServices.Unsafe.As<object, T>(ref global::System.Runtime.CompilerServices.Unsafe.AsRef<object>(in this.__um_obj));");
-            }
-
-            foreach (var item in data.Variants.Where(x => x.TypeData.TypeKind is VariantTypeKind.Managed or VariantTypeKind.Unmanaged))
-            {
-                if (env.AllowsRefStruct || !item.TypeData.IsRefLikeType)
-                {
-                    writer.WriteMultipleLines($$"""
-                            if (typeof(T) == typeof({{item.TypeData.FullyQName}}))
-                                return ref {{ExprVariantRefToT(item)}};
-                            """);
-                }
-            }
-            writer.WriteLine("return ref global::System.Runtime.CompilerServices.Unsafe.NullRef<T>();");
+            emitter.EmitDangerousGetValueMethodBody(writer, env, data, "T");
         }
         writer.WriteLine();
 
@@ -1238,12 +632,11 @@ partial class TypeUnionGenerator
                 writer.WriteLine(Utils.AggressiveInliningAttributeList);
                 if (env.UnscopedRef)
                     writer.WriteLine(Utils.UnscopedRefAttributeList);
-                writer.WriteMultipleLines($$"""
-                    private readonly ref readonly {{variant.TypeData.FullyQName}} DangerousGetValueRef_{{variant.ReadableIdentifier}}()
-                    {
-                        return ref {{ExprVariantRefToT(variant, variant.TypeData.FullyQName)}};
-                    }
-                    """);
+                writer.WriteLine($"private readonly ref readonly {variant.TypeData.FullyQName} DangerousGetValueRef_{variant.ReadableIdentifier}()");
+                using (writer.EnterBracketIndentScope('{'))
+                {
+                    emitter.EmitDangerousGetVariantValueMethodBody(writer, env, data, variant);
+                }
                 writer.WriteLine();
             }
         }
@@ -1260,7 +653,7 @@ partial class TypeUnionGenerator
             writer.WriteLine($"private readonly unsafe ref readonly void* DangerousGetPointerTypeValueRef()");
             using (writer.EnterBracketIndentScope('{'))
             {
-                writer.WriteLine($"return ref *(void**)global::System.Runtime.CompilerServices.Unsafe.AsPointer(ref global::System.Runtime.CompilerServices.Unsafe.AsRef<__ut_Unmanaged>(in this.__um_unmanaged));");
+                emitter.EmitDangerousGetPointerValueMethodBody(writer, env, data);
             }
         }
     }
@@ -1305,11 +698,8 @@ partial class TypeUnionGenerator
 
     // emit: Shared interfaces
 
-    private void EmitSharedInterfaceImplementations(IndentedTextWriter writer, TypeUnionData data, Env env)
+    private void EmitSharedInterfaceImplementations(IndentedTextWriter writer, ITypeUnionEmitter emitter, TypeUnionData data, Env env)
     {
-        const string ThrowNRE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowNullReferenceException()";
-        const string ThrowUUCE = "global::Trarizon.Library.Functional.CompilerServices.GeneratorHelpers.ThrowUnknownUnionCaseException()";
-
         foreach (var intf in data.SharedInterfaces ?? [])
         {
             foreach (var member in intf.Members)
@@ -1342,20 +732,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine("get");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return default!;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name};");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return default!;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, false, value => $"{returnRef}(({intf.TypeFQName})({value})).{member.Name}");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -1363,21 +740,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine(member.IsInitAccessor ? "init" : "set");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} = value;");
-                                            writer.WriteLine($"    return;");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, true, value => $"(({intf.TypeFQName})({value})).{member.Name} = value;");
                                 }
                             }
                         }
@@ -1391,20 +754,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine("get");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return default!;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}];");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return default!;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, false, value => $"{returnRef}(({intf.TypeFQName})({value})).{member.Name}[{arguments}];");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -1412,21 +762,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine(member.IsInitAccessor ? "init" : "set");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}[{arguments}] = value;");
-                                            writer.WriteLine($"    return;");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, true, value => $"(({intf.TypeFQName})({value})).{member.Name}[{arguments}] = value;");
                                 }
                             }
                         }
@@ -1440,21 +776,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine("add");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} += value;");
-                                            writer.WriteLine($"    return;");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, true, value => $"(({intf.TypeFQName})({value})).{member.Name} += value;");
                                 }
                             }
                             if (member.HasSetOrRemoveAccessor)
@@ -1462,21 +784,7 @@ partial class TypeUnionGenerator
                                 writer.WriteLine("remove");
                                 using (writer.EnterBracketIndentScope('{'))
                                 {
-                                    writer.WriteLine($"switch (this.__um_flag)");
-                                    using (writer.EnterBracketIndentScope('{'))
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                        writer.WriteLine($"    {ThrowNRE};");
-                                        writer.WriteLine($"    return;");
-                                        foreach (var variant in data.Variants)
-                                        {
-                                            writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                            writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, member.ReturnTypeFQName)})).{member.Name} -= value;");
-                                            writer.WriteLine($"    return;");
-                                        }
-                                    }
-                                    writer.WriteLine($"{ThrowUUCE};");
-                                    writer.WriteLine($"return;");
+                                    emitter.EmitSharedInterfaceDispatch(writer, env, data, true, value => $"(({intf.TypeFQName})({value})).{member.Name} -= value;");
                                 }
                             }
                         }
@@ -1486,39 +794,12 @@ partial class TypeUnionGenerator
                         writer.WriteLine($"{@static}{returnTypeRef}{member.ReturnTypeFQName} {intf.TypeFQName}.{member.Name}{tp}({parameters})");
                         using (writer.EnterBracketIndentScope('{'))
                         {
-                            writer.WriteLine($"switch (this.__um_flag)");
-                            using (writer.EnterBracketIndentScope('{'))
-                            {
-                                writer.WriteLine($"case {LiteralFlag(0, data)}:");
-                                writer.WriteLine($"    {ThrowNRE};");
-                                if (member.ReturnsVoid)
-                                {
-                                    writer.WriteLine($"    return;");
-                                    foreach (var variant in data.Variants)
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                        writer.WriteLine($"    (({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
-                                        writer.WriteLine($"    return;");
-                                    }
-                                }
-                                else
-                                {
-                                    writer.WriteLine($"    return default!;");
-                                    foreach (var variant in data.Variants)
-                                    {
-                                        writer.WriteLine($"case {LiteralFlag(variant.Id, data)}:");
-                                        writer.WriteLine($"    return {returnRef}(({intf.TypeFQName})({ExprVariantToT(variant, variant.TypeData.FullyQName)})).{member.Name}{tp}({arguments});");
-                                    }
-                                }
-                            }
-                            writer.WriteLine($"{ThrowUUCE};");
-                            if (!member.ReturnsVoid)
-                            {
-                                writer.WriteLine($"return default!;");
-                            }
+                            emitter.EmitSharedInterfaceDispatch(writer, env, data, member.ReturnsVoid, value => $"{returnRef}(({intf.TypeFQName})({value})).{member.Name}{tp}({arguments});");
                         }
                         break;
                 }
+
+                writer.WriteLine();
             }
         }
     }

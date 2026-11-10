@@ -19,5 +19,9 @@ public static class GeneratorHelpers
 
     [EditorBrowsable(EditorBrowsableState.Never)]
     [GeneratorUseOnly]
-    public readonly struct VoidSentinel;
+    public sealed class VoidSentinel
+    {
+        public static readonly VoidSentinel Value = new();
+        private VoidSentinel() { }
+    };
 }

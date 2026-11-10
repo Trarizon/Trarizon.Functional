@@ -49,39 +49,6 @@ public interface ITypeUnion
     /// </summary>
     static abstract ReadOnlySpan<Type> VariantTypes { get; }
 
-    /// <summary>
-    /// Get the flag value of the variant type <typeparamref name="TVariant"/>.
-    /// </summary>
-    static abstract uint GetFlagValue<TVariant>()
-#if NET9_0_OR_GREATER
-        where TVariant : allows ref struct
-#endif
-    ;
-
-    /// <summary>
-    /// Get the flag value of the variant type <paramref name="type"/>.
-    /// </summary>
-    /// <returns>
-    /// The flag value of the variant type <paramref name="type"/>.
-    /// <c>0u</c> if <paramref name="type"/> is not a variant type of this type union.
-    /// </returns>
-    static abstract uint GetFlagValue(Type type);
-
-    /// <summary>
-    /// Get the variant type that the flag value <paramref name="flagValue"/> represents.
-    /// </summary>
-    /// <returns>
-    /// The variant type that the flag value <paramref name="flagValue"/> represents.
-    /// <see langword="null"/> if <paramref name="flagValue"/> is <c>0u</c> or if the flag value is not defined.
-    /// </returns>
-    static abstract Type? GetFlagType(uint flagValue);
-
-    /// <summary>
-    /// Check if the flag value <paramref name="flagValue"/> is defined. <br/>
-    /// Note that for flag value <c>0u</c>, this returns false.
-    /// </summary>
-    static abstract bool IsFlagDefined(uint flagValue);
-
 #endif
 }
 
@@ -103,26 +70,6 @@ public interface ITypeUnion<TSelf> : ITypeUnion
         where T : allows ref struct
 #endif
     ;
-
-    /// <summary>
-    /// Try to create a type union from a flag value and a value of type T.<br/>
-    /// Type T must be assignable to the type that <paramref name="flagValue"/> represents.
-    /// </summary>
-    static abstract bool TryCreate<T>(uint flagValue, T value, out TSelf result)
-#if NET9_0_OR_GREATER
-        where T : allows ref struct
-#endif
-    ;
-
-    static bool ITypeUnion.IsFlagDefined(uint flagValue)
-        => flagValue >= 1 && flagValue <= TSelf.VariantTypes.Length;
-
-    static Type? ITypeUnion.GetFlagType(uint flagValue)
-    {
-        if (!TSelf.IsFlagDefined(flagValue))
-            return null;
-        return TSelf.VariantTypes[unchecked((int)flagValue - 1)];
-    }
 
 #endif
 }
